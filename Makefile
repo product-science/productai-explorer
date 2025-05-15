@@ -5,7 +5,7 @@ SET_LATEST ?= 0
 SET_LATEST := $(shell if [ "$(SET_LATEST)" = "1" ]; then echo 1; else echo 0; fi)
 
 build-docker:
-	docker build -t gcr.io/decentralized-ai/ping-pub-explorer:$(VERSION) .
+	docker build -t ping-pub-explorer:$(VERSION) .
 	@if [ "$(SET_LATEST)" = "1" ]; then \
 		echo "Setting latest tag..."; \
 		docker tag gcr.io/decentralized-ai/ping-pub-explorer:$(VERSION) gcr.io/decentralized-ai/ping-pub-explorer:latest; \
