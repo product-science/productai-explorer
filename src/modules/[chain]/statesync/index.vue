@@ -75,7 +75,7 @@ onMounted(() => {
           <pre data-prefix=">"><code class="text-gray-800 dark:invert">trust_height = {{ height }} </code></pre>
           <pre data-prefix=">"><code class="text-gray-800 dark:invert">trust_hash = "{{ hash }}"</code></pre>
           <pre data-prefix=">"><code class="text-gray-800 dark:invert"></code></pre>
-          <pre data-prefix=">"><code class="text-green-400"># 2/3 of unbonding time</code></pre>
+          <!-- <pre data-prefix=">"><code class="text-green-400"># 2/3 of unbonding time</code></pre> -->
           <pre data-prefix=">"><code class="text-gray-800 dark:invert">trust_period = "168h"</code></pre>
         </div>
         <br />

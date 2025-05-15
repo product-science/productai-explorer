@@ -66,4 +66,13 @@ export default defineConfig({
   optimizeDeps: {
     entries: ['./src/**/*.vue'],
   },
+  server: {
+    host: '0.0.0.0',
+    proxy: {
+      '/cosmos': {
+        target: 'http://genesis-node:1317',
+        changeOrigin: true
+      }
+    }
+  },
 });

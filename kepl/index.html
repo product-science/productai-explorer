@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Add GONKA Testnet to Keplr</title>
+</head>
+<body>
+<button id="add-chain">Add GONKA Testnet to Keplr</button>
+
+<script>
+    document.getElementById('add-chain').onclick = async () => {
+        if (!window.keplr) {
+            alert("Keplr extension not found. Please install Keplr.");
+            return;
+        }
+
+        try {
+            await window.keplr.experimentalSuggestChain({
+                chainId: "gonka-testnet-1",
+                chainName: "gonka-testnet-1",
+                rpc: "https://2cdc1a25d46a.ngrok.app",
+                rest: "https://2c27bbef94af.ngrok.app",
+
+                bip44: {
+                    coinType: 118
+                },
+
+                bech32Config: {
+                    bech32PrefixAccAddr: "gonka",
+                    bech32PrefixAccPub: "gonkapub",
+                    bech32PrefixValAddr: "gonkavaloper",
+                    bech32PrefixValPub: "gonkavaloperpub",
+                    bech32PrefixConsAddr: "gonkavalcons",
+                    bech32PrefixConsPub: "gonkavalconspub"
+                },
+
+                currencies: [
+                    {
+                        coinDenom: "NIC",
+                        coinMinimalDenom: "nicoin",
+                        coinDecimals: 0
+                    },
+                    {
+                        coinDenom: "UIC",
+                        coinMinimalDenom: "uicoin",
+                        coinDecimals: 3
+                    },
+                    {
+                        coinDenom: "MIC",
+                        coinMinimalDenom: "micoin",
+                        coinDecimals: 6
+                    },
+                    {
+                        coinDenom: "ICO",
+                        coinMinimalDenom: "icoin",
+                        coinDecimals: 9
+                    },
+                    {
+                        coinDenom: "KIC",
+                        coinMinimalDenom: "kicoin",
+                        coinDecimals: 12
+                    },
+                    {
+                        coinDenom: "MCI",
+                        coinMinimalDenom: "mcicoin",
+                        coinDecimals: 15
+                    }
+                ],
+
+                stakeCurrency: {
+                    coinDenom: "NIC",
+                    coinMinimalDenom: "nicoin",
+                    coinDecimals: 0
+                },
+
+                feeCurrencies: [
+                    {
+                        coinDenom: "NIC",
+                        coinMinimalDenom: "nicoin",
+                        coinDecimals: 0
+                    }
+                ],
+
+                features: ["stargate", "ibc-transfer"]
+            });
+
+            alert("Chain successfully suggested! Check Keplr to approve.");
+        } catch (e) {
+            console.error(e);
+            alert("Error suggesting chain: " + e.message);
+        }
+    };
+</script>
+</body>
+</html>

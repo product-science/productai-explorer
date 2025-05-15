@@ -42,34 +42,56 @@ onMounted(() => {
 });
 
 async function fetchChange(blockWindow: number = 14400) {
-    let page = 0;
+  let page = 0;
 
-    let height = Number(base.latest?.block?.header?.height || 0);
-    if (height > blockWindow) {
-        height -= blockWindow;
-    } else {
-        height = 1;
-    }
-    // voting power in 24h ago
-    while (page < staking.validators.length && height > 0) {
-        await base.fetchValidatorByHeight(height, page).then((x) => {
-            x.validators.forEach((v) => {
-                yesterday.value[v.pub_key.key] = Number(v.voting_power);
-            });
-        });
-        page += 100;
-    }
+  let height = Number(base.latest?.block?.header?.height || 0);
+  console.log(`[fetchChange] Current block height: ${height}`);
 
-    page = 0;
-    // voting power for now
-    while (page < staking.validators.length) {
-        await base.fetchLatestValidators(page).then((x) => {
-            x.validators.forEach((v) => {
-                latest.value[v.pub_key.key] = Number(v.voting_power);
-            });
-        });
-        page += 100;
-    }
+  if (height > blockWindow) {
+    height -= blockWindow;
+  } else {
+    height = 1;
+  }
+  console.log(`[fetchChange] Historical block height (24h ago): ${height}`);
+
+  // voting power 24h ago
+  while (page < staking.validators.length && height > 0) {
+    console.log(`[fetchChange] Fetching validators at height ${height}, page ${page}`);
+    await base.fetchValidatorByHeight(height, page).then((x) => {
+      x.validators.forEach((v) => {
+        const power = Number(v.voting_power);
+        const key = v.pub_key.key;
+        yesterday.value[key] = power;
+        console.log(`[24h ago] pub_key=${key}, voting_power=${power}`);
+      });
+    });
+    page += 100;
+  }
+
+  page = 0;
+
+  // voting power now
+  while (page < staking.validators.length) {
+    console.log(`[fetchChange] Fetching latest validators, page ${page}`);
+    await base.fetchLatestValidators(page).then((x) => {
+      x.validators.forEach((v) => {
+        const power = Number(v.voting_power);
+        const key = v.pub_key.key;
+        latest.value[key] = power;
+        console.log(`[NOW] pub_key=${key}, voting_power=${power}`);
+      });
+    });
+    page += 100;
+  }
+
+  // Final diff
+  console.log(`[fetchChange] -------- Voting Power Change Summary --------`);
+  Object.keys(latest.value).forEach((key) => {
+    const current = latest.value[key] ?? 0;
+    const prev = yesterday.value[key] ?? 0;
+    const diff = current - prev;
+    console.log(`pub_key=${key}, current=${current}, 24h_ago=${prev}, change=${diff}`);
+  });
 }
 
 const changes = computed(() => {
@@ -237,7 +259,7 @@ loadAvatars();
                 <div class="text-xs">{{ $t('staking.inflation') }}</div>
             </span>
         </div>
-        <div class="flex">
+<!--        <div class="flex">
             <span>
                 <div class="relative w-9 h-9 rounded overflow-hidden flex items-center justify-center mr-2">
                     <Icon class="text-primary" icon="mdi:lock-open-outline" size="32" />
@@ -248,7 +270,7 @@ loadAvatars();
                 <div class="font-bold">{{ formatSeconds(staking.params?.unbonding_time) }}</div>
                 <div class="text-xs">{{ $t('staking.unbonding_time') }}</div>
             </span>
-        </div> 
+        </div> -->
         <div class="flex">
             <span>
                 <div class="relative w-9 h-9 rounded overflow-hidden flex items-center justify-center mr-2">
@@ -319,7 +341,7 @@ loadAvatars();
                             <th scope="col" class="text-right uppercase">{{ $t('staking.voting_power') }}</th>
                             <th scope="col" class="text-right uppercase">{{ $t('staking.24h_changes') }}</th>
                             <th scope="col" class="text-right uppercase">{{ $t('staking.commission') }}</th>
-                            <th scope="col" class="text-center uppercase">{{ $t('staking.actions') }}</th>
+                          <!-- <th scope="col" class="text-center uppercase">{{ $t('staking.actions') }}</th> -->
                         </tr>
                     </thead>
                     <tbody>
@@ -411,7 +433,7 @@ loadAvatars();
                                                     denom: staking.params
                                                         .bond_denom,
                                                 },
-                                                true,
+                                                false,
                                                 '0,0'
                                             )
                                         }}
@@ -449,6 +471,7 @@ loadAvatars();
                                 </div>
                                 <label
                                     v-else
+                                    v-if="false"
                                     for="delegate"
                                     class="btn btn-xs btn-primary rounded-sm capitalize"
                                     @click="
