@@ -8,7 +8,7 @@ build-docker:
 	docker build -t ping-pub-explorer:$(VERSION) .
 	@if [ "$(SET_LATEST)" = "1" ]; then \
 		echo "Setting latest tag..."; \
-		docker tag gcr.io/decentralized-ai/ping-pub-explorer:$(VERSION) gcr.io/decentralized-ai/ping-pub-explorer:latest; \
+		docker tag ping-pub-explorer:$(VERSION) ping-pub-explorer:latest; \
 	fi
 
 
