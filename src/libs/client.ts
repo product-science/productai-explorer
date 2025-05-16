@@ -1,5 +1,6 @@
 import { fetchData, get } from '@/libs';
 import { DEFAULT } from '@/libs';
+import { getProxyEndpoint } from './proxy-config';
 import {
   adapter,
   type Request,
@@ -17,9 +18,12 @@ import semver from 'semver'
 export class BaseRestClient<R extends AbstractRegistry> {
   version: string;
   endpoint: string;
+  originalEndpoint: string;
   registry: R;
   constructor(endpoint: string, registry: R, version?: string) {
-    this.endpoint = endpoint;
+    this.originalEndpoint = endpoint;
+    // Store original endpoint but use proxy endpoint for requests
+    this.endpoint = getProxyEndpoint(endpoint, 'api');
     this.registry = registry;
     this.version = version || 'v0.40'
   }

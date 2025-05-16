@@ -30,6 +30,26 @@ There are two primary reasons for this choice:
  - Trust: In a decentralized system, it is crucial to avoid relying solely on a single entity. By utilizing official/trusted third-party public LCD/RPC servers, Ping Dashboard ensures that the data is sourced from a network of trusted participants.
  - Limited Resources: As Ping Dashboard plans to list hundreds of Cosmos-based blockchains in the future, it is impractical for the Ping team to operate validators or full nodes for all of them. Leveraging trusted third-party servers allows for more efficient resource allocation.
 
+## Using the Proxy Server
+
+If you're experiencing CORS issues with direct API calls from the browser to Cosmos nodes, you can use the included proxy server:
+
+1. Start the proxy server:
+   ```
+   yarn server
+   ```
+
+2. The proxy will forward requests to your configured Cosmos node:
+   - API requests: http://localhost:3000/api -> http://localhost:1317
+   - RPC requests: http://localhost:3000/rpc -> http://localhost:26657
+
+3. You can customize the endpoints using environment variables:
+   ```
+   API_ENDPOINT=https://api.yourdomain.com RPC_ENDPOINT=https://rpc.yourdomain.com PORT=4000 yarn server
+   ```
+
+Check out the [proxy server documentation](./server/README.md) for more details.
+
 ## Donation
 
 Your donation will help us make better products. Thanks in advance.

@@ -1,0 +1,19 @@
+version: '3'
+
+services:
+  productai-explorer:
+    build: .
+    ports:
+      - "5173:5173"  # Frontend
+      - "3000:3000"  # Proxy server
+    environment:
+      # Configure these for your Cosmos node
+      - API_ENDPOINT=http://node:1317
+      - RPC_ENDPOINT=http://node:26657
+    # For development with hot reload, you can uncomment these lines
+    # volumes:
+    #  - ./src:/app/src
+    #  - ./server:/app/server
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # For Docker to reach host machine services
+    restart: unless-stopped 

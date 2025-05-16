@@ -69,10 +69,16 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     proxy: {
-      '/cosmos': {
-        target: 'http://genesis-node:1317',
-        changeOrigin: true
-      }
+      // Proxy API requests to our Node.js proxy server
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      // Proxy RPC requests to our Node.js proxy server
+      '/rpc': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     }
   },
 });
