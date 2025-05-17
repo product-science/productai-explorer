@@ -170,7 +170,7 @@ export const useIndexModule = defineStore('module-index', {
           stats: formatter.formatTokenAmount(bank.supply),
           change: 0,
         },
-        {
+/*        {
           title: 'Bonded Tokens',
           color: 'warning',
           icon: 'mdi-lock',
@@ -187,7 +187,7 @@ export const useIndexModule = defineStore('module-index', {
           icon: 'mdi-chart-multiple',
           stats: formatter.formatDecimalToPercent(mintStore.inflation),
           change: 0,
-        },
+        },*/
         {
           title: 'Community Pool',
           color: 'primary',
