@@ -4,9 +4,10 @@ VERSION ?= $(shell git describe --always)
 SET_LATEST ?= 0
 SET_LATEST := $(shell if [ "$(SET_LATEST)" = "1" ]; then echo 1; else echo 0; fi)
 IMAGE_NAME=gcr.io/decentralized-ai/ping-pub-explorer
+PROXY_PORT ?= 3000
 
 build-docker:
-	docker build -t $(IMAGE_NAME):$(VERSION) .
+	docker build --build-arg PROXY_PORT=$(PROXY_PORT) -t $(IMAGE_NAME):$(VERSION) .
 	@if [ "$(SET_LATEST)" = "1" ]; then \
 		echo "Setting latest tag..."; \
 		docker tag $(IMAGE_NAME):$(VERSION) $(IMAGE_NAME):latest; \
