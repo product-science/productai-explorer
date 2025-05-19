@@ -4,14 +4,10 @@ Note: the host name used in the user's browser (displayed in the address bar) to
 If the host name contains the substring "testnet" (for example: "https://mytestnetwork.example.com") then chain configuration files in the `testnet` directory (only) are loaded. Conversely if the host name does not contain that substring then chain configuration files in the `mainnet` directory (only) are loaded.
 Remember to bear this behavior in mind when selecting a DNS host name for self hosting the explorer.
 
-** if you want to list your blockchain on ping.pub, please submit your configuration on https://github.com/ping-pub/ping.pub.git **
-
-- Submit configs for mainnet, go to https://github.com/ping-pub/explorer/tree/master/chains/mainnet
-
-- Submit configs for testnet, go to https://github.com/ping-pub/explorer/tree/master/chains/testnet, these configs will be enabled when you visit the domain that starts with `testnet.*`, for example `https://testnet.ping.pub`
+- Submit configs for mainnet, go to /mainnet
+- Submit configs for testnet, go to /testnet
 
 # Sample of Config
-
 ```json
 {
     "chain_name": "cosmos",
@@ -42,7 +38,7 @@ Remember to bear this behavior in mind when selecting a DNS host name for self h
     "logo": "https://dl.airtable.com/.attachments/e54f814bba8c0f9af8a3056020210de0/2d1155fb/cosmos-hub.svg"
 }
 ```
-- **chain_name** the name to identify the chain on ping.pub, would be better to use the same one as registry
+- **chain_name** the name to identify the chain on ping.pub, config file **must** have same name. 
 - **api** the rest api endpoint.(make sure that CORS is enabled: `Allow-Control-Allow-Origin: *`)
 - **rpc** the rpc endpoint, make sure that the port is added. rpc endpoint is only used for state sync. it's optional.
 - **assets** Native Assets on blockchain. 
@@ -91,18 +87,3 @@ https://github.com/cosmos/cosmos-sdk/blob/main/docs/architecture/adr-024-coin-me
 ## Loading from Cosmos Registry:
 
 https://github.com/cosmos/chain-registry
-
-# Test 
-
-please add these check points in comments with your PR, and adding your test result by clicking the checkbox of each line
-```
-Test Result:
-- [ ] Connect wallet, check if address is correct? 
-- [ ] Transfer
-- [ ] Delegate
-- [ ] Redelegate
-- [ ] Unbond
-- [ ] withdraw Validator's Commission
-- [ ] withdraw Rewards
-```
-Test is very important for us and our users. 

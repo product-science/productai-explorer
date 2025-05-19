@@ -3,8 +3,7 @@
 VERSION ?= $(shell git describe --always)
 SET_LATEST ?= 0
 SET_LATEST := $(shell if [ "$(SET_LATEST)" = "1" ]; then echo 1; else echo 0; fi)
-# IMAGE_NAME=gcr.io/decentralized-ai/ping-pub-explorer
-IMAGE_NAME=ping-pub-explorer
+IMAGE_NAME=gcr.io/decentralized-ai/ping-pub-explorer
 
 build-docker:
 	docker build -t $(IMAGE_NAME):$(VERSION) .
@@ -12,7 +11,6 @@ build-docker:
 		echo "Setting latest tag..."; \
 		docker tag $(IMAGE_NAME):$(VERSION) $(IMAGE_NAME):latest; \
 	fi
-
 
 docker-push:
 	@echo "pushing to Google Cloud Artifact Registry"
