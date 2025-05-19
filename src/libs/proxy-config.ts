@@ -1,7 +1,7 @@
 // Configuration for the proxy server
 
 // Use default values - override with environment variables in production
-export const PROXY_SERVER_HOST = 'http://localhost:3000';
+export const PROXY_SERVER_HOST = import.meta.env.VITE_PROXY_SERVER_HOST || 'http://localhost:3000';
 
 // API and RPC paths on the proxy server
 export const API_PATH = '/api';
