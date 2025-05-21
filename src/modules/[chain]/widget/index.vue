@@ -16,7 +16,7 @@ const hdPath = computed(() => {
     return `m/44'/${ chainStore.current?.coinType }/0'/0/0`
 })
 </script>
-<template>
+<!--<template>
   <div>
     <div class="bg-base-100 px-4 pt-3 pb-4 rounded shadow">
       <h2 class="card-title">{{ $t('widget.title') }}</h2>
@@ -41,7 +41,7 @@ const hdPath = computed(() => {
       <div class="mt-4">
         <span class="text-base"> 1. {{ $t('widget.text_2') }}</span>
         <div class="mockup-code bg-base-200 my-2">
-            <pre data-prefix=">"><code class="text-green-400">&lt;!-- This widget is optional. --&gt; </code></pre>
+            <pre data-prefix=">"><code class="text-green-400">&lt;!&#45;&#45; This widget is optional. &#45;&#45;&gt; </code></pre>
             <pre data-prefix=">"><code  class="text-gray-800 dark:invert">&lt;ping-connect-wallet chain-id="{{ chainId }}" hd-path="{{ hdPath }}"/&gt;</code></pre>
         </div>
 
@@ -62,4 +62,5 @@ const hdPath = computed(() => {
         order: 300
       }
     }
-</route>
+</route>-->
+

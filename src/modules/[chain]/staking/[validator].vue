@@ -287,16 +287,6 @@ function mapDelegators(messages: any[]) {
               <div class="text-sm mb-4">
                 {{ v.description?.identity || '-' }}
               </div>
-              <label
-                for="delegate"
-                class="btn btn-primary btn-sm w-full"
-                @click="
-                  dialog.open('delegate', {
-                    validator_address: v.operator_address,
-                  })
-                "
-                >{{ $t('account.btn_delegate') }}</label
-              >
             </div>
           </div>
           <div class="m-4 text-sm">
@@ -343,19 +333,11 @@ function mapDelegators(messages: any[]) {
                 <span> {{ v.jailed || '-' }} </span>
               </div>
             </div>
-            <p class="text-sm mt-4 mb-3 font-medium">{{ $t('staking.liquid_staking') }}</p>
             <div class="card-list">
               <div class="flex items-center mb-2">
                 <Icon icon="mdi-lock" class="text-xl mr-1" />
                 <span class="font-bold mr-2">{{ $t('staking.validator_bond_share') }}: </span>
                 <span> {{ format.formatToken( {amount: v.validator_bond_shares, denom: staking.params.bond_denom }, false) }} </span>
-              </div>
-              <div class="flex items-center">
-                <Icon icon="mdi-waves-arrow-right" class="text-xl mr-1" />
-                <span class="font-bold mr-2">{{ $t('staking.liquid_staking_shares') }}: </span>
-                <span>
-                  {{ format.formatToken( {amount: v.liquid_shares, denom: staking.params.bond_denom }, false) }}
-                </span>
               </div>
             </div>
           </div>
@@ -375,7 +357,7 @@ function mapDelegators(messages: any[]) {
                     format.formatToken2({
                       amount: v.tokens,
                       denom: staking.params.bond_denom,
-                    })
+                    }, false)
                   }}
                 </h4>
                 <span class="text-sm">{{ $t('staking.total_bonded') }}</span>
@@ -421,33 +403,6 @@ function mapDelegators(messages: any[]) {
               <div class="ml-3 flex flex-col justify-center">
                 <h4>{{ apr }}</h4>
                 <span class="text-sm">{{ $t('staking.annual_profit') }}</span>
-              </div>
-            </div>
-
-            <div class="flex mb-2">
-              <div
-                class="flex items-center justify-center rounded w-10 h-10"
-                style="border: 1px solid #666"
-              >
-                <Icon icon="mdi:arrow-down-bold-circle-outline" class="text-3xl" />
-              </div>
-              <div class="ml-3 flex flex-col justify-center">
-                <h4>{{ v.unbonding_height }}</h4>
-                <span class="text-sm">{{ $t('staking.unbonding_height') }}</span>
-              </div>
-            </div>
-
-            <div class="flex mb-2">
-              <div
-                class="flex items-center justify-center rounded w-10 h-10"
-                style="border: 1px solid #666"
-              >
-                <Icon icon="mdi-clock" class="text-3xl" />
-              </div>
-              <div class="ml-3 flex flex-col justify-center">
-                <h4 v-if="v.unbonding_time && !v.unbonding_time.startsWith('1970')">{{ format.toDay(v.unbonding_time, 'from') }}</h4>
-                <h4 v-else>-</h4>
-                <span class="text-sm">{{ $t('staking.unbonding_time') }}</span>
               </div>
             </div>
           </div>
@@ -650,7 +605,7 @@ function mapDelegators(messages: any[]) {
         <div class="tabs tabs-boxed bg-transparent">
                 
                 <span class="mr-10">Voting Power Events: </span>
-                <a
+<!--                <a
                     class="tab text-gray-400"
                     :class="{ 'tab-active': selectedEventType === EventType.Delegate }"
                     @click="loadPowerEvents(1, EventType.Delegate)"
@@ -661,7 +616,7 @@ function mapDelegators(messages: any[]) {
                     :class="{ 'tab-active': selectedEventType === EventType.Unbond }"
                     @click="loadPowerEvents(1, EventType.Unbond)"
                     >{{ $t('account.btn_unbond') }}</a
-                >
+                >-->
             </div>
       </div>
       <div class="rounded overflow-auto">

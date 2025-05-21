@@ -163,13 +163,13 @@ export const useIndexModule = defineStore('module-index', {
           stats: String(base?.latest?.block?.last_commit?.signatures.length || 0),
           change: 0,
         },
-        {
+/*        {
           title: 'Supply',
           color: 'success',
           icon: 'mdi-currency-usd',
           stats: formatter.formatTokenAmount(bank.supply),
           change: 0,
-        },
+        },*/
 /*        {
           title: 'Bonded Tokens',
           color: 'warning',
@@ -188,7 +188,7 @@ export const useIndexModule = defineStore('module-index', {
           stats: formatter.formatDecimalToPercent(mintStore.inflation),
           change: 0,
         },*/
-        {
+/*        {
           title: 'Community Pool',
           color: 'primary',
           icon: 'mdi-bank',
@@ -199,7 +199,7 @@ export const useIndexModule = defineStore('module-index', {
             )
           ),
           change: 0,
-        },
+        },*/
       ];
     },
 

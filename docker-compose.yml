@@ -1,8 +1,6 @@
-version: '3'
-
 services:
-  productai-explorer:
-    build: .
+  explorer:
+    image: gcr.io/decentralized-ai/ping-pub-explorer:latest
     ports:
       - "5173:5173"  # Frontend
       - "${PROXY_PORT:-3000}:${PROXY_PORT:-3000}"  # Proxy server - uses PORT env var with 3000 as default
@@ -10,12 +8,18 @@ services:
       # Configure these for your Cosmos node
       - PROXY_HOST=http://127.0.0.1
       - PROXY_PORT=3000
-      - API_ENDPOINT=<http://node:1317>
-      - RPC_ENDPOINT=<http://node:26657>
+      - API_ENDPOINT=http://genesis-node:1317
+      - RPC_ENDPOINT=http://genesis-node:26657
     # For development with hot reload, you can uncomment these lines
-    # volumes:
-    #  - ./src:/app/src
-    #  - ./server:/app/server
+    volumes:
+      - ./src:/app/src
+      - ./server:/app/server
+    networks:
+      - chain-public
     extra_hosts:
       - "host.docker.internal:host-gateway"  # For Docker to reach host machine services
-    restart: unless-stopped 
+    restart: unless-stopped
+
+networks:
+  chain-public:
+   name: chain-public

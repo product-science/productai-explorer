@@ -35,6 +35,7 @@ function pageload(p: number) {
 }
 
 </script>
+<!--
 <template>
   <div>
     <div class="bg-base-100 px-4 pt-3 pb-4 rounded shadow">
@@ -65,3 +66,4 @@ function pageload(p: number) {
     </div>
   </div>
 </template>
+-->

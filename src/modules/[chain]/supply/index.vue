@@ -67,6 +67,7 @@ function pageload(p: number) {
 }
 
 </script>
+<!--
 <template>
   <div class="overflow-auto bg-base-100">
     <table class="table table-compact">
@@ -101,3 +102,4 @@ function pageload(p: number) {
       }
     }
   </route>
+-->

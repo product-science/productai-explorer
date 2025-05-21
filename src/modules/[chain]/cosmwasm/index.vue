@@ -42,7 +42,7 @@ function gotoHistory() {
     router.push(`/${props.chain}/cosmwasm/0/transactions?contract=${togo.value}`)
 }
 </script>
-<template>
+<!--<template>
     <div class="bg-base-100 px-4 pt-3 pb-4 rounded mb-4 shadow">
         <h2 class="card-title truncate w-full mb-4">{{ $t('cosmwasm.title') }}</h2>
         <div class="grid grid-flow-col auto-cols-max gap-4 overflow-hidden">
@@ -101,4 +101,4 @@ function gotoHistory() {
         i18n: 'cosmwasm'
       }
     }
-</route>
+</route>-->

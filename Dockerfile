@@ -14,4 +14,4 @@ RUN chmod +x server/start.sh
 
 EXPOSE 5173
 EXPOSE ${PROXY_PORT}
-CMD ["./server/start.sh"]
+CMD ["sh", "./server/start.sh"]

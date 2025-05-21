@@ -40,7 +40,7 @@ onMounted(() => {
   });
 });
 </script>
-<template>
+<!--<template>
   <div>
     <div class="bg-base-100 px-4 pt-3 pb-4 rounded mb-4 shadow">
       <h2 class="card-title truncate mb-2">{{ $t('statesync.title') }}</h2>
@@ -75,7 +75,6 @@ onMounted(() => {
           <pre data-prefix=">"><code class="text-gray-800 dark:invert">trust_height = {{ height }} </code></pre>
           <pre data-prefix=">"><code class="text-gray-800 dark:invert">trust_hash = "{{ hash }}"</code></pre>
           <pre data-prefix=">"><code class="text-gray-800 dark:invert"></code></pre>
-          <!-- <pre data-prefix=">"><code class="text-green-400"># 2/3 of unbonding time</code></pre> -->
           <pre data-prefix=">"><code class="text-gray-800 dark:invert">trust_period = "168h"</code></pre>
         </div>
         <br />
@@ -85,7 +84,7 @@ onMounted(() => {
         {{ $t('statesync.text_3_1') }}
         <code class="bg-base-200 text-gray-600 px-2 py-px mx-1 rounded shadow">{{ appName }} unsafe-reset-all</code> or
         <code
-          class="bg-base-200 text-gray-600 px-2 py-px mx-1 rounded shadow">{{ appName }} tendermint unsafe-reset-all --home ~/.HOME</code>
+          class="bg-base-200 text-gray-600 px-2 py-px mx-1 rounded shadow">{{ appName }} tendermint unsafe-reset-all &#45;&#45;home ~/.HOME</code>
         {{ $t('statesync.text_3_2') }}.
       </div>
     </div>
@@ -118,4 +117,4 @@ onMounted(() => {
         i18n: 'state-sync'
       }
     }
-  </route>
+  </route>-->

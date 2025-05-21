@@ -153,18 +153,18 @@ async function update() {
 }
 </script>
 
-<template>
+<!--<template>
   <div>
-    <!--  -->
+    &lt;!&ndash;  &ndash;&gt;
     <div class="bg-base-100 px-4 pt-3 pb-4 rounded shadow">
       <div class="form-control">
         <label class="input-group input-group-md w-full flex">
-          <!-- <input
+          &lt;!&ndash; <input
             type="text"
             placeholder="Button on both side"
             class="input input-bordered input-md w-full"
             v-model="rpc"
-          /> -->
+          /> &ndash;&gt;
           <select v-model="rpc" class="select select-bordered w-full flex-1">
             <option v-for="(item, index) in rpcList" :key="index">
               {{ item?.address }}/consensus_state
@@ -177,7 +177,7 @@ async function update() {
         {{ httpstatus }}: {{ httpStatusText }}
       </div>
     </div>
-    <!-- cards -->
+    &lt;!&ndash; cards &ndash;&gt;
     <div class="mt-4" v-if="roundState['height/round/step']">
       <div class="grid grid-cols-1 md:!grid-cols-4 auto-cols-auto gap-4 pb-4">
         <div
@@ -195,7 +195,7 @@ async function update() {
             </div>
           </div>
         </div>
-        <!-- Height -->
+        &lt;!&ndash; Height &ndash;&gt;
         <div
           class="bg-base-100 px-4 py-3 rounded shadow flex justify-between items-center"
         >
@@ -211,7 +211,7 @@ async function update() {
             </div>
           </div>
         </div>
-        <!-- Round -->
+        &lt;!&ndash; Round &ndash;&gt;
         <div
           class="bg-base-100 px-4 py-3 rounded shadow flex justify-between items-center"
         >
@@ -227,7 +227,7 @@ async function update() {
             </div>
           </div>
         </div>
-        <!-- Step -->
+        &lt;!&ndash; Step &ndash;&gt;
         <div
           class="bg-base-100 px-4 py-3 rounded shadow flex justify-between items-center"
         >
@@ -245,7 +245,7 @@ async function update() {
         </div>
       </div>
     </div>
-    <!-- update -->
+    &lt;!&ndash; update &ndash;&gt;
     <div
       class="bg-base-100 p-4 rounded shadow"
       v-if="roundState['height/round/step']"
@@ -290,7 +290,7 @@ async function update() {
 
     </div>
 
-    <!-- alert-info -->
+    &lt;!&ndash; alert-info &ndash;&gt;
     <div
       class="text-[#00cfe8] bg-[rgba(0,207,232,0.12)] rounded shadow mt-4 alert-info"
     >
@@ -320,4 +320,4 @@ async function update() {
       i18n: 'consensus',
     }
   }
-</route>
+</route>-->

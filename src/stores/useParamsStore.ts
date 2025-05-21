@@ -24,24 +24,6 @@ export const useParamStore = defineStore('paramstore', {
           color: 'light-success',
           value: '-',
         },
-        {
-          subtitle: 'bonded_and_supply',
-          icon: 'DollarSignIcon',
-          color: 'light-danger',
-          value: '-',
-        },
-        {
-          subtitle: 'bonded_ratio',
-          icon: 'PercentIcon',
-          color: 'light-warning',
-          value: '-',
-        },
-        {
-          subtitle: 'inflation',
-          icon: 'TrendingUpIcon',
-          color: 'light-primary',
-          value: '-',
-        },
       ],
     },
     mint: {
