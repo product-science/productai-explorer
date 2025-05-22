@@ -5,9 +5,14 @@ import '@/style.css';
 import { createApp, ref } from 'vue';
 import { createPinia } from 'pinia';
 import LazyLoad from 'lazy-load-vue3';
+import { loadRuntimeConfig } from './runtimeConfig';
 
 import router from './router';
 import { useBaseStore } from './stores/useBaseStore';
+
+loadRuntimeConfig().then(() => {
+  createApp(App).mount('#app');
+});
 
 // Create vue app
 const app = createApp(App);

@@ -1,8 +1,8 @@
 // Configuration for the proxy server
 
 // Use default values - override with environment variables in production
-export const PROXY_HOST = process.env.PROXY_HOST || 'http://127.0.0.1';
-export const PROXY_PORT = process.env.PROXY_PORT || '3000';
+export const PROXY_HOST = import.meta.env.VITE_PROXY_HOST || 'http://127.0.0.1';
+export const PROXY_PORT = import.meta.env.VITE_PROXY_PORT || '3000';
 
 // API and RPC paths on the proxy server
 export const API_PATH = '/api';
