@@ -36,61 +36,62 @@ function onchange() {
 }
 
 async function initParamsForKeplr() {
-    const chain = selected.value
-    if(!chain.endpoints?.rest?.at(0)) throw new Error("Endpoint does not set");
-    const client = CosmosRestClient.newDefault(chain.endpoints.rest?.at(0)?.address || "")
-    const b = await client.getBaseBlockLatest()   
-    const chainid = b.block.header.chain_id
+  const chain = selected.value;
 
-    const gasPriceStep = chain.keplrPriceStep || {
-        low: 0.01,
-        average: 0.025,
-        high: 0.03,
-    }
-    const coinDecimals = chain.assets[0].denom_units.find(x => x.denom === chain.assets[0].symbol.toLowerCase())?.exponent || 6
-    conf.value = JSON.stringify({
-        chainId: chainid,
-        chainName: chain.chainName,
-        rpc: chain.endpoints?.rpc?.at(0)?.address,
-        rest: chain.endpoints?.rest?.at(0)?.address,
-        bip44: {
-            coinType: Number(chain.coinType),
-        },
-        coinType: Number(chain.coinType),
-        bech32Config: {
-            bech32PrefixAccAddr: chain.bech32Prefix,
-            bech32PrefixAccPub: `${chain.bech32Prefix}pub`,
-            bech32PrefixValAddr: `${chain.bech32Prefix}valoper`,
-            bech32PrefixValPub: `${chain.bech32Prefix}valoperpub`,
-            bech32PrefixConsAddr: `${chain.bech32Prefix}valcons`,
-            bech32PrefixConsPub: `${chain.bech32Prefix}valconspub`,
-        },
-        currencies: [
-            {
-                coinDenom: chain.assets[0].symbol,
-                coinMinimalDenom: chain.assets[0].base,
-                coinDecimals,
-                coinGeckoId: chain.assets[0].coingecko_id || 'unknown',
-            },
-        ],
-        feeCurrencies: [
-            {
-                coinDenom: chain.assets[0].symbol,
-                coinMinimalDenom: chain.assets[0].base,
-                coinDecimals,
-                coinGeckoId: chain.assets[0].coingecko_id || 'unknown',
-                gasPriceStep,
-            },
-        ],
+  if (!chain.endpoints?.rest?.at(0)) {
+    throw new Error("Endpoint does not set");
+  }
+
+  const client = CosmosRestClient.newDefault(chain.endpoints.rest.at(0).address || "");
+  const baseBlock = await client.getBaseBlockLatest();
+  const chainId = baseBlock.block.header.chain_id;
+
+  const gasPriceStep = chain.keplrPriceStep || {
+    low: 0.01,
+    average: 0.025,
+    high: 0.03,
+  };
+
+  const currencies = chain.assets.map((asset) => {
+    const exponent = asset.denom_units.find((d) => d.denom === asset.display)?.exponent ?? 6;
+    return {
+      coinDenom: asset.symbol,
+      coinMinimalDenom: asset.base,
+      coinDecimals: exponent,
+      coinGeckoId: asset.coingecko_id || 'unknown',
+    };
+  });
+
+  const mainAsset = currencies[0];
+
+  const config = {
+    chainId: chainId,
+    chainName: chain.chainName,
+    rpc: chain.endpoints.rpc?.at(0)?.address,
+    rest: chain.endpoints.rest?.at(0)?.address,
+    bip44: {
+      coinType: Number(chain.coinType),
+    },
+    bech32Config: {
+      bech32PrefixAccAddr: chain.bech32Prefix,
+      bech32PrefixAccPub: `${chain.bech32Prefix}pub`,
+      bech32PrefixValAddr: `${chain.bech32Prefix}valoper`,
+      bech32PrefixValPub: `${chain.bech32Prefix}valoperpub`,
+      bech32PrefixConsAddr: `${chain.bech32Prefix}valcons`,
+      bech32PrefixConsPub: `${chain.bech32Prefix}valconspub`,
+    },
+    currencies: currencies,
+    feeCurrencies: [
+      {
+        ...mainAsset,
         gasPriceStep,
-        stakeCurrency: {
-            coinDenom: chain.assets[0].symbol,
-            coinMinimalDenom: chain.assets[0].base,
-            coinDecimals,
-            coinGeckoId: chain.assets[0].coingecko_id || 'unknown',
-        },
-        features: chain.keplrFeatures || [],
-    }, null, '\t')
+      },
+    ],
+    stakeCurrency: mainAsset,
+    features: chain.keplrFeatures || [],
+  };
+
+  conf.value = JSON.stringify(config, null, 2);
 }
 
 async function initSnap() {

@@ -246,58 +246,19 @@ loadAvatars();
 </script>
 <template>
 <div>
-  <div class="bg-base-100 rounded-lg grid sm:grid-cols-1 md:grid-cols-2 p-4">
-<!--    <div class="flex">
-            <span>
-                <div class="relative w-9 h-9 rounded overflow-hidden flex items-center justify-center mr-2">
-                    <Icon class="text-success" icon="mdi:trending-up" size="32" />
-                    <div class="absolute top-0 left-0 bottom-0 right-0 opacity-20 bg-success"></div>
-                </div>
-            </span>
-            <span>
-                <div class="font-bold">{{ format.percent(mintStore.inflation) }}</div>
-                <div class="text-xs">{{ $t('staking.inflation') }}</div>
-            </span>
-        </div>-->
-<!--        <div class="flex">
-            <span>
-                <div class="relative w-9 h-9 rounded overflow-hidden flex items-center justify-center mr-2">
-                    <Icon class="text-primary" icon="mdi:lock-open-outline" size="32" />
-                    <div class="absolute top-0 left-0 bottom-0 right-0 opacity-20 bg-primary"></div>
-                </div>
-            </span>
-            <span>
-                <div class="font-bold">{{ formatSeconds(staking.params?.unbonding_time) }}</div>
-                <div class="text-xs">{{ $t('staking.unbonding_time') }}</div>
-            </span>
-        </div> -->
-        <div class="flex">
-            <span>
-                <div class="relative w-9 h-9 rounded overflow-hidden flex items-center justify-center mr-2">
-                    <Icon class="text-error" icon="mdi:alert-octagon-outline" size="32" />
-                    <div class="absolute top-0 left-0 bottom-0 right-0 opacity-20 bg-error"></div>
-                </div>
-            </span>
-            <span>
-            <div class="font-bold">{{ format.percent(slashing.slash_fraction_double_sign) }}</div>
-            <div class="text-xs">{{ $t('staking.double_sign_slashing') }}</div>
-            </span>
-        </div> 
-        <div class="flex">
-            <span>
-                <div class="relative w-9 h-9 rounded overflow-hidden flex items-center justify-center mr-2">
-                    <Icon class="text-error" icon="mdi:pause" size="32" />
-                    <div class="absolute top-0 left-0 bottom-0 right-0 opacity-20 bg-error"></div>
-                </div>
-            </span>
-            <span>
-            <div class="font-bold">{{ format.percent(slashing.slash_fraction_downtime) }}</div>
-            <div class="text-xs">{{ $t('staking.downtime_slashing') }}</div>
-            </span>
-        </div>  
+  <div class="bg-base-100 rounded-lg grid grid-cols-1 p-4">
+    <div class="flex items-center">
+      <div class="relative w-9 h-9 rounded overflow-hidden flex items-center justify-center mr-2">
+        <Icon class="text-primary" icon="mdi:lightning-bolt" size="32" />
+        <div class="absolute top-0 left-0 bottom-0 right-0 opacity-20 bg-primary"></div>
+      </div>
+      <div>
+        <div class="font-bold">{{ staking.totalPower }}</div>
+        <div class="text-xs">{{ $t('total power') }}</div>
+      </div>
     </div>
-
-    <div>
+  </div>
+  <div>
         <div class="flex items-center justify-between py-1">
             <div class="tabs tabs-boxed bg-transparent">
                 <a
@@ -341,7 +302,6 @@ loadAvatars();
                             <th scope="col" class="text-right uppercase">{{ $t('staking.voting_power') }}</th>
                             <th scope="col" class="text-right uppercase">{{ $t('staking.24h_changes') }}</th>
                             <th scope="col" class="text-right uppercase">{{ $t('staking.commission') }}</th>
-                          <!-- <th scope="col" class="text-center uppercase">{{ $t('staking.actions') }}</th> -->
                         </tr>
                     </thead>
                     <tbody>
@@ -440,7 +400,7 @@ loadAvatars();
                                     </h6>
                                     <span class="text-xs">{{
                                         format.calculatePercent(
-                                            v.delegator_shares,
+                                            v.tokens,
                                             staking.totalPower
                                         )
                                     }}</span>
@@ -460,28 +420,6 @@ loadAvatars();
                                         v.commission?.commission_rates?.rate
                                     )
                                 }}
-                            </td>
-                            <!-- 👉 Action -->
-                            <td class="text-center">
-                                <div
-                                    v-if="v.jailed"
-                                    class="badge badge-error gap-2 text-white"
-                                >
-                                {{ $t('staking.jailed') }}
-                                </div>
-                                <label
-                                    v-else
-                                    v-if="false"
-                                    for="delegate"
-                                    class="btn btn-xs btn-primary rounded-sm capitalize"
-                                    @click="
-                                        dialog.open('delegate', {
-                                            validator_address:
-                                                v.operator_address,
-                                        })
-                                    "
-                                    >{{ $t('account.btn_delegate') }}</label
-                                >
                             </td>
                         </tr>
                     </tbody>

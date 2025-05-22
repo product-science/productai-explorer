@@ -31,7 +31,7 @@ export const useStakingStore = defineStore('stakingStore', {
   getters: {
     totalPower(): number {
       const sum = (s: number, e: Validator) => {
-        return s + parseInt(e.delegator_shares);
+        return s + parseInt(e.tokens);
       };
       return this.validators ? this.validators.reduce(sum, 0) : 0;
     },
