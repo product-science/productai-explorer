@@ -2,7 +2,7 @@
   "module": {
     "dashboard": "Panel de control",
     "blocks": "Bloques",
-    "staking": "Staking",
+    "staking": "Validadores",
     "governance": "Gobernanza",
     "parameters": "Parámetros",
     "uptime": "Tiempo en línea",
@@ -20,7 +20,8 @@
     "add_to_favorite": "Agregar a favoritos",
     "all_blockchains": "Todas las Blockchains",
     "sponsors": "Patrocinadores",
-    "links": "Enlaces"
+    "links": "Enlaces",
+    "based_on": "Basado en"
   },
   "pages": {
     "title": "Panel de control Ping",

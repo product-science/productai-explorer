@@ -117,26 +117,32 @@ export const useBlockchain = defineStore('blockchain', {
       });
 
       // combine all together
-      return [
-        ...currNavItem,
-        { heading: 'Ecosystem' } as NavSectionTitle,
-        {
-          title: 'Favorite',
-          children: favNavItems,
-          badgeContent: favNavItems.length,
-          badgeClass: 'bg-primary',
-          i18n: true,
-          icon: { icon: 'mdi-star', size: '22' },
-        } as NavGroup,
-        {
-          title: 'All Blockchains',
-          to: { path: '/' },
-          badgeContent: this.dashboard.length,
-          badgeClass: 'bg-primary',
-          i18n: true,
-          icon: { icon: 'mdi-grid', size: '22' },
-        } as NavLink,
-      ];
+      const menuItems: VerticalNavItems = [...currNavItem];
+      
+      // Only add ecosystem section if there is more than one chain
+      if (this.dashboard.length > 1) {
+        menuItems.push(
+          { heading: 'Ecosystem' } as NavSectionTitle,
+          {
+            title: 'Favorite',
+            children: favNavItems,
+            badgeContent: favNavItems.length,
+            badgeClass: 'bg-primary',
+            i18n: true,
+            icon: { icon: 'mdi-star', size: '22' },
+          } as NavGroup,
+          {
+            title: 'All Blockchains',
+            to: { path: '/' },
+            badgeContent: this.dashboard.length,
+            badgeClass: 'bg-primary',
+            i18n: true,
+            icon: { icon: 'mdi-grid', size: '22' },
+          } as NavLink
+        );
+      }
+
+      return menuItems;
     },
   },
   actions: {

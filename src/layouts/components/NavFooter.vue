@@ -6,9 +6,7 @@
     <div class="flex flex-1">
       &copy;&nbsp;
       {{ new Date().getFullYear() }}&nbsp;
-      Made With&nbsp;
-      <img src="../../assets/images/heart.svg" />&nbsp;
-      By&nbsp;
+      Based on&nbsp;
       <a
         class="link link-primary no-underline"
         href="https://ping.pub"

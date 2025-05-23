@@ -2,7 +2,7 @@
   "module": {
     "dashboard": "Dashboard",
     "blocks": "Blöcke",
-    "staking": "Staking",
+    "staking": "Validatoren",
     "governance": "Governance",
     "parameters": "Parameter",
     "uptime": "Verfügbarkeit",
@@ -20,7 +20,8 @@
     "add_to_favorite": "Zu Favoriten hinzufügen",
     "all_blockchains": "Alle Blockchains",
     "sponsors": "Sponsoren",
-    "links": "Links"
+    "links": "Links",
+    "based_on": "Basierend auf"
   },
   "pages": {
     "title": "Ping Dashboard",

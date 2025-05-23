@@ -2,7 +2,7 @@
   "module": {
     "dashboard": "面板首页",
     "blocks": "区块和交易",
-    "staking": "质押生息",
+    "staking": "验证人",
     "governance": "社区治理",
     "parameters": "参数",
     "uptime": "状态",
@@ -19,7 +19,8 @@
     "add_to_favorite": "加入收藏夹",
     "all_blockchains": "全部区块链",
     "sponsors": "赞助商",
-    "links": "链接"
+    "links": "链接",
+    "based_on": "基于"
   },
   "pages": {
     "title": "Ping Dashboard",

@@ -2,7 +2,7 @@
   "module": {
     "dashboard": "대시보드",
     "blocks": "블록",
-    "staking": "스테이킹",
+    "staking": "검증인",
     "governance": "거버넌스",
     "parameters": "파라미터",
     "uptime": "업타임",
@@ -20,7 +20,8 @@
     "add_to_favorite": "즐겨찾기에 추가",
     "all_blockchains": "모든 블록체인",
     "sponsors": "스폰서",
-    "links": "링크"
+    "links": "링크",
+    "based_on": "기반"
   },
   "pages": {
     "title": "핑 대시보드",

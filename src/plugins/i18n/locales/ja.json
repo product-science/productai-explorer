@@ -2,7 +2,7 @@
   "module": {
     "dashboard": "ダッシュボード",
     "blocks": "ブロック",
-    "staking": "ステーキング",
+    "staking": "バリデーター",
     "governance": "ガバナンス",
     "parameters": "パラメータ",
     "uptime": "アップタイム",
@@ -20,7 +20,8 @@
     "add_to_favorite": "お気に入りに追加",
     "all_blockchains": "すべてのブロックチェーン",
     "sponsors": "スポンサー",
-    "links": "リンク"
+    "links": "リンク",
+    "based_on": "ベース"
   },
   "pages": {
     "title": "Ping ダッシュボード",

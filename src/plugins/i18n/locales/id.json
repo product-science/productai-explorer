@@ -2,7 +2,7 @@
     "module": {
       "dashboard": "Dasbor",
       "blocks": "Kumpulan Blok",
-      "staking": "Staking",
+      "staking": "Validator",
       "governance": "Tata Kelola",
       "parameters": "Parameter",
       "uptime": "Pemantauan",
@@ -18,7 +18,8 @@
       "add_to_favorite": "Tambahkan ke favorit",
       "all_blockchains": "All Blockchain",
       "sponsors": "Sponsors",
-      "links": "Tautan"
+      "links": "Tautan",
+      "based_on": "Berdasarkan"
     },
     "pages": {
       "title": "Ping Dashboard",
