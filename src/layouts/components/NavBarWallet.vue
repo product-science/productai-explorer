@@ -3,11 +3,13 @@ import { useRoute } from 'vue-router'
 import { useBaseStore, useBlockchain, useWalletStore } from '@/stores';
 import { Icon } from '@iconify/vue';
 import { ref, computed } from 'vue';
+import ConnectWallet from '@/components/ConnectWallet.vue';
 
 const route = useRoute();
 const walletStore = useWalletStore();
 const chainStore = useBlockchain();
 const baseStore = useBaseStore();
+const connectWalletRef = ref<InstanceType<typeof ConnectWallet> | null>(null);
 // walletStore.$subscribe((m, s) => {
 //   console.log(m, s);
 // });
@@ -44,19 +46,26 @@ const params = computed(() => {
   return "";
 });
 
+function openConnectWallet() {
+  connectWalletRef.value?.openModal();
+}
+
 </script>
 
 <template>
   <div class="dropdown dropdown-hover dropdown-end">
     <label tabindex="0" class="btn btn-sm btn-primary m-1 lowercase truncate !inline-flex text-xs md:!text-sm">
       <Icon icon="mdi:wallet" />
-      <span class="ml-1 hidden md:block">
-        {{ walletStore.shortAddress || 'Wallet' }}</span>
+      <template v-if="walletStore?.currentAddress">
+        <span class="ml-1 hidden md:block">
+          {{ walletStore.shortAddress }}
+        </span>
+      </template>
     </label>
     <div tabindex="0" class="dropdown-content menu shadow p-2 bg-base-100 rounded w-52 md:!w-64 overflow-auto">
-      <label v-if="!walletStore?.currentAddress" for="PingConnectWallet" class="btn btn-sm btn-primary">
+      <button v-if="!walletStore?.currentAddress" @click="openConnectWallet" class="btn btn-sm btn-primary">
         <Icon icon="mdi:wallet" /><span class="ml-1 block">Connect Wallet</span>
-      </label>
+      </button>
       <div class="px-2 mb-1 text-gray-500 dark:text-gray-400 font-semibold">
         {{ walletStore.connectedWallet?.wallet }}
       </div>
@@ -95,15 +104,15 @@ const params = computed(() => {
     </div>
   </div>
   <Teleport to="body">
-    <ping-connect-wallet :chain-id="baseStore.currentChainId || 'cosmoshub-4'" :hd-path="chainStore.defaultHDPath"
-      :addr-prefix="chainStore.current?.bech32Prefix || 'cosmos'" @connect="walletStateChange"
-      @keplr-config="walletStore.suggestChain()"  :params="params" />
+    <ConnectWallet 
+      ref="connectWalletRef"
+      :chain-id="baseStore.currentChainId || 'cosmoshub-4'" 
+      :hd-path="chainStore.defaultHDPath"
+      :addr-prefix="chainStore.current?.bech32Prefix || 'cosmos'" 
+      @connect="walletStateChange"
+      @keplr-config="walletStore.suggestChain()"  
+      :params="params" 
+    />
   </Teleport>
 </template>
 
-<style>
-.ping-connect-btn,
-.ping-connect-dropdown {
-  display: none !important;
-}
-</style>

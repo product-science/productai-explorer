@@ -13,10 +13,10 @@ const selected = ref({} as ChainConfig)
 onMounted(() => {
     const chainStore = useBlockchain()
     selected.value = chainStore.current || Object.values(dashboard.chains)[0]
-  debugger;
-    initParamsForKeplr()
+    initParamsForLeap()
 })
-async function initParamsForKeplr() {
+
+async function initParamsForLeap() {
     const chain = selected.value
     if(!chain.endpoints?.rest?.at(0)) throw new Error("Endpoint does not set");
     const client = CosmosRestClient.newDefault(chain.endpoints.rest?.at(0)?.address || "")
@@ -29,6 +29,8 @@ async function initParamsForKeplr() {
         high: 0.03,
     }
     const coinDecimals = chain.assets[0].denom_units.find(x => x.denom === chain.assets[0].symbol.toLowerCase())?.exponent || 6
+    
+    // Leap wallet uses a slightly different format for chain configuration
     conf.value = JSON.stringify({
         chainId: chainid,
         chainName: chain.chainName,
@@ -37,7 +39,6 @@ async function initParamsForKeplr() {
         bip44: {
             coinType: Number(chain.coinType),
         },
-        coinType: Number(chain.coinType),
         bech32Config: {
             bech32PrefixAccAddr: chain.bech32Prefix,
             bech32PrefixAccPub: `${chain.bech32Prefix}pub`,
@@ -63,7 +64,6 @@ async function initParamsForKeplr() {
                 gasPriceStep,
             },
         ],
-        gasPriceStep,
         stakeCurrency: {
             coinDenom: chain.assets[0].symbol,
             coinMinimalDenom: chain.assets[0].base,
@@ -71,26 +71,42 @@ async function initParamsForKeplr() {
             coinGeckoId: chain.assets[0].coingecko_id || 'unknown',
         },
         features: chain.keplrFeatures || [],
+        // Leap specific fields
+        image: chain.image || '',
+        theme: {
+            primaryColor: chain.theme?.primaryColor || '#1D1D1D',
+            gradient: chain.theme?.gradient || 'linear-gradient(180deg, #1D1D1D 0%, #1D1D1D 100%)',
+        },
     }, null, '\t')
 }
 
 function suggest() {
-    if (!window.keplr) {
-        error.value = "Keplr wallet extension not found. Please install Keplr wallet.";
+    console.log('Suggest button clicked');
+    console.log('Leap available:', !!window.leap);
+    console.log('Configuration:', conf.value);
+    
+    if (!window.leap) {
+        error.value = "Leap wallet extension not found. Please install Leap wallet.";
+        console.error("Leap wallet extension not found");
         return;
     }
 
     try {
         const chainConfig = JSON.parse(conf.value);
+        console.log('Parsed chain config:', chainConfig);
+        
         // @ts-ignore
-        window.keplr.experimentalSuggestChain(chainConfig)
+        window.leap.experimentalSuggestChain(chainConfig)
             .then(() => {
+                console.log('Chain suggestion successful');
                 error.value = ""; // Clear any previous errors
             })
             .catch(e => {
-                error.value = e.message || 'Failed to suggest chain to Keplr';
+                console.error('Leap suggestion error:', e);
+                error.value = e.message || 'Failed to suggest chain to Leap';
             });
     } catch (e) {
+        console.error('JSON parse error:', e);
         error.value = 'Invalid chain configuration: ' + (e.message || 'Unknown error');
     }
 }
@@ -98,14 +114,14 @@ function suggest() {
 
 <template>
     <div class="bg-base-100 p-4 rounded text-center">
-        <AdBanner id="keplr-banner-ad" unit="banner" width="970px" height="90px" />
+        <AdBanner id="leap-banner-ad" unit="banner" width="970px" height="90px" />
         <div class="flex">
-            <select v-model="selected" class="select select-bordered mx-5" @change="initParamsForKeplr">
+            <select v-model="selected" class="select select-bordered mx-5" @change="initParamsForLeap">
                 <option v-for="c in dashboard.chains" :value="c">
                     {{ c.chainName }}
                 </option>
             </select>
-            <button class="btn !bg-yes !border-yes text-white px-10" @click="suggest">Add {{ selected.chainName }} TO Keplr Wallet</button>
+            <button class="btn !bg-yes !border-yes text-white px-10" @click="suggest">Add {{ selected.chainName }} TO Leap Wallet</button>
         </div>
         <div v-if="error" class="text-red-500 mt-2">
             {{ error }}
@@ -114,7 +130,7 @@ function suggest() {
             <textarea v-model="conf" class="textarea textarea-bordered w-full" rows="15"></textarea>
         </div>
         <div class="mt-4 mb-4">
-            If the chain is not offically support on Keplr, you can submit these parameters to enable Keplr.
+            If the chain is not officially supported on Leap, you can submit these parameters to enable Leap.
         </div>
     </div>
-</template>
+</template> 
