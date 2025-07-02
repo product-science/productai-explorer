@@ -294,7 +294,7 @@ const amount = computed({
             ${{ format.tokenValue(walletStore.balanceOfStakingToken) }}
           </div>
         </div>
-<!--        <div class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-3">
+<!--    <div class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-3">
           <div class="text-sm mb-1">{{ $t('module.staking') }}</div>
           <div class="text-lg font-semibold text-main">
             {{ format.formatToken(walletStore.stakingAmount) }}
@@ -374,7 +374,7 @@ const amount = computed({
 
       <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4 px-4 pb-6 mt-4">
       <label for="PingTokenConvert" class="btn btn-primary text-white">{{ $t('index.btn_swap') }}</label>
-        <label for="send" class="btn !bg-yes !border-yes text-white" @click="dialog.open('send', {}, updateState)">{{ $t('account.btn_send') }}</label>
+        <label for="send" class="btn !bg-yes !border-yes text-white" @click="dialog.open('send', { balances: walletStore.balances }, updateState)">{{ $t('account.btn_send') }}</label>
         <RouterLink to="/wallet/receive" class="btn !bg-info !border-info text-white hidden">{{ $t('index.receive') }}</RouterLink>
       </div>
       <Teleport to="body">

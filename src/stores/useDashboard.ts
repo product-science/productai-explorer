@@ -68,6 +68,7 @@ export interface ChainConfig {
     rpc?: Endpoint[];
     grpc?: Endpoint[];
   };
+  inference_api?: Endpoint[];
   logo: string;
   versions: {
     application?: string;
@@ -116,6 +117,7 @@ export interface LocalConfig {
   theme_color?: string;
   min_tx_fee: string;
   rpc: string[] | Endpoint[];
+  inference_api?: string[] | Endpoint[];
   sdk_version: string;
   registry_name?: string;
   features?: string[];
@@ -179,6 +181,9 @@ export function fromLocal(lc: LocalConfig): ChainConfig {
     rpc: apiConverter(lc.rpc),
     grpc: apiConverter(lc.grpc),
   };
+  if (lc.inference_api) {
+    conf.inference_api = apiConverter(lc.inference_api);
+  }
   if(lc.provider_chain) {
     conf.providerChain = {
       api: apiConverter(lc.provider_chain.api)

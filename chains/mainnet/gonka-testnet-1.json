@@ -1,53 +1,60 @@
 {
   "chain_name": "gonka-testnet-1",
-  "api": ["/api"],
-  "rpc": ["/rpc"],
+  "api": [
+    {"provider": "Local Node", "address": "http://127.0.0.1:80/chain-api"}
+  ],
+  "rpc": [
+      {"provider": "Local Node", "address": "http://127.0.0.1:80/chain-rpc"}
+  ],
+  "inference_api": [
+    {"provider": "Local Node", "address": "http://127.0.0.1:80/api"}
+  ],
+  "features": [
+    "validator",
+    "developer",
+    "inference",
+    "blocks",
+    "tx",
+    "cosmwasm",
+    "parameters"
+  ],
   "sdk_version": "0.42.6",
   "coin_type": "118",
   "min_tx_fee": "100",
   "logo": "/public/logos/gonka-testnet/logo-small.png",
   "assets": [
     {
+      "description": "AI Inference and training token",
       "base": "nicoin",
-      "symbol": "NIC",
-      "exponent": "0",
-      "coingecko_id":"",
-      "logo": ""
-    },
-    {
-      "base": "uicoin",
-      "symbol": "UIC",
-      "exponent": "3",
-      "coingecko_id":"",
-      "logo": ""
-    },
-    {
-      "base": "micoin",
-      "symbol": "MIC",
-      "exponent": "6",
-      "coingecko_id":"",
-      "logo": ""
-    },
-    {
-      "base": "icoin",
-      "symbol": "ICO",
-      "exponent": "9",
-      "coingecko_id":"",
-      "logo": ""
-    },
-    {
-      "base": "kicoin",
-      "symbol": "KIC",
-      "exponent": "12",
-      "coingecko_id":"",
-      "logo": ""
-    },
-    {
-      "base": "mcicoin",
-      "symbol": "MCI",
-      "exponent": "15",
-      "coingecko_id":"",
-      "logo": ""
+      "display": "icoin",
+      "name": "AI Coin",
+      "symbol": "AIC",
+      "denom_units": [
+        {
+          "denom": "nicoin",
+          "exponent": 0
+        },
+        {
+          "denom": "uicoin",
+          "exponent": 3
+        },
+        {
+          "denom": "micoin",
+          "exponent": 6
+        },
+        {
+          "denom": "icoin",
+          "exponent": 9
+        },
+        {
+          "denom": "kicoin",
+          "exponent": 12
+        },
+        {
+          "denom": "mcicoin",
+          "exponent": 15
+        }
+      ]
     }
   ],
   "addr_prefix": "gonka",

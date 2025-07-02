@@ -13,6 +13,7 @@ import type {
 } from '@/layouts/types';
 import { useRouter } from 'vue-router';
 import { CosmosRestClient } from '@/libs/client';
+import { post, get } from '@/libs/http';
 import {
   useBankStore,
   useBaseStore,
@@ -37,6 +38,7 @@ export const useBlockchain = defineStore('blockchain', {
         address: string;
         provider: string;
       },
+      inferenceApiEndpoint: '' as string,
       connErr: '',
     };
   },
@@ -68,6 +70,9 @@ export const useBlockchain = defineStore('blockchain', {
       let currNavItem: VerticalNavItems = [];
       const router = useRouter();
       const routes = router?.getRoutes() || [];
+
+      console.log(this.current, routes);
+
       if (this.current && routes) {
         if (this.current?.themeColor) {
           const { color } = hexToRgb(this.current?.themeColor);
@@ -190,6 +195,75 @@ export const useBlockchain = defineStore('blockchain', {
         `endpoint-${this.chainName}`,
         JSON.stringify(endpoint)
       );
+      
+      // Setup inference API endpoint if available
+      this.setupInferenceApi();
+    },
+
+    setupInferenceApi() {
+      const inferenceEndpoints = this.current?.inference_api;
+      if (inferenceEndpoints && inferenceEndpoints.length > 0) {
+        // Use the first available inference API endpoint
+        this.inferenceApiEndpoint = inferenceEndpoints[0].address;
+        localStorage.setItem(
+          `inference-endpoint-${this.chainName}`,
+          this.inferenceApiEndpoint
+        );
+      } else {
+        // Fallback to stored endpoint if available
+        const stored = localStorage.getItem(`inference-endpoint-${this.chainName}`);
+        if (stored) {
+          this.inferenceApiEndpoint = stored;
+        }
+      }
+    },
+
+    // Inference API methods
+    async submitNewUnfundedParticipant(data: {
+      address: string;
+      url?: string;
+      validator_key?: string;
+      pub_key: string;
+      worker_key?: string;
+    }) {
+      if (!this.inferenceApiEndpoint) {
+        throw new Error('Inference API endpoint not configured');
+      }
+      
+      const url = `${this.inferenceApiEndpoint}/v1/participants`;
+      return await post(url, data);
+    },
+
+    async getParticipants() {
+      if (!this.inferenceApiEndpoint) {
+        throw new Error('Inference API endpoint not configured');
+      }
+      
+      const url = `${this.inferenceApiEndpoint}/v1/participants`;
+      return await get(url);
+    },
+
+    async getParticipant(address: string) {
+      if (!this.inferenceApiEndpoint) {
+        throw new Error('Inference API endpoint not configured');
+      }
+      
+      const url = `${this.inferenceApiEndpoint}/v1/participants/${address}`;
+      return await get(url);
+    },
+
+    async inferenceApiRequest(endpoint: string, method: 'GET' | 'POST' = 'GET', data?: any) {
+      if (!this.inferenceApiEndpoint) {
+        throw new Error('Inference API endpoint not configured');
+      }
+      
+      const url = `${this.inferenceApiEndpoint}${endpoint}`;
+      
+      if (method === 'POST') {
+        return await post(url, data);
+      } else {
+        return await get(url);
+      }
     },
     async setCurrent(name: string) {
       // Ensure chains are loaded due to asynchronous calls.
@@ -205,6 +279,8 @@ export const useBlockchain = defineStore('blockchain', {
       // Update chainName if needed
       if (caseSensitiveName !== this.chainName) {
         this.chainName = caseSensitiveName;
+        // Setup inference API when chain changes
+        this.setupInferenceApi();
       }
     },
     supportModule(mod: string) {

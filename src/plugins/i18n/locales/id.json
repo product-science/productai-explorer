@@ -2,7 +2,9 @@
     "module": {
       "dashboard": "Dasbor",
       "blocks": "Kumpulan Blok",
-      "staking": "Validator",
+      "validator": "Validator",
+      "developer": "Pengembang",
+      "inference": "Inferensi AI",
       "governance": "Tata Kelola",
       "parameters": "Parameter",
       "uptime": "Pemantauan",
@@ -64,6 +66,8 @@
       "hash": "Hash",
       "messages": "Pesan",
       "time": "Waktu",
+      "inferences": "Inferensi AI",
+      "no_inferences": "Tidak Ada Inferensi",
       "error": "Akun tidak ada di dalam rantai"
     },
     "block": {
@@ -178,7 +182,7 @@
       "btn_out": "Keluar",
       "btn_in": "Masuk"
     },
-    "staking": {
+    "validator": {
       "inflation": "Inflasi",
       "unbonding_time": "Waktu Pembatalan Tautan",
       "double_sign_slashing": "Pemotongan Ganda Tanda Tangan",
@@ -213,7 +217,19 @@
       "operator_addr": "Alamat Operator",
       "hex_addr": "Alamat Hex",
       "signer_addr": "Alamat Penandatangan",
-      "consensus_pub_key": "Kunci Publik Konsensus"
+      "consensus_pub_key": "Kunci Publik Konsensus",
+      "liquid_staking": "Liquid Staking",
+      "liquid_staking_shares": "Liquid Shares",
+      "validator_bond_share": "Validator Bonded",
+      "total_power": "Total Daya",
+      "final_reward": "Hadiah Akhir",
+      "earned_reward": "Hadiah yang Diperoleh",
+      "validators": "Validator",
+      "earned": "Diperoleh",
+      "active": "Aktif",
+      "reputation": "Reputasi",
+      "missed_blocks": "Blok Terlewat",
+      "uptime": "Waktu Aktif"
     },
     "statesync": {
       "title": "Apa itu State Sync?",
@@ -284,5 +300,38 @@
       "receive": "Terima",
       "app_versions": "Versi Aplikasi",
       "node_info": "Informasi Node"
+    },
+    "developer": {
+      "monthly_tokens": "Token Bulanan",
+      "global_users": "Pengguna Global",
+      "active_providers": "Penyedia Aktif",
+      "models": "Model",
+      "throughput": "Throughput",
+      "developers": "Pengembang",
+      "id": "ID",
+      "name": "Nama",
+      "email": "Email",
+      "projects": "Proyek",
+      "status": "Status",
+      "last_active": "Terakhir Aktif",
+      "active_developers": "Pengembang Aktif",
+      "inactive_developers": "Pengembang Tidak Aktif",
+      "description": "Statistik aktivitas pengembang dan proyek"
+    },
+    "inference": {
+      "inferences_today": "Inferensi (Hari Ini)",
+      "inferences_last_week": "Inferensi (Minggu Lalu)",
+      "ai_tokens_today": "Token AI (Hari Ini)",
+      "ai_tokens_last_week": "Token AI (Minggu Lalu)",
+      "throughput": "Throughput",
+      "model": "Model",
+      "quantization": "Kuantisasi",
+      "context": "Konteks",
+      "input_price": "Harga Input",
+      "output_price": "Harga Output",
+      "max_throughput": "Throughput Maksimal",
+      "latency": "Latensi",
+      "no_models": "Tidak ada model tersedia",
+      "performance_chart_placeholder": "Grafik performa akan ditampilkan di sini"
     }
 }

@@ -2,7 +2,9 @@
   "module": {
     "dashboard": "Panel de control",
     "blocks": "Bloques",
-    "staking": "Validadores",
+    "validator": "Validadores",
+    "developer": "Desarrolladores",
+    "inference": "Inferencias de IA",
     "governance": "Gobernanza",
     "parameters": "Parámetros",
     "uptime": "Tiempo en línea",
@@ -70,6 +72,8 @@
     "hash": "Hash",
     "messages": "Mensajes",
     "time": "Tiempo",
+    "inferences": "Inferencias de IA",
+    "no_inferences": "Sin Inferencias",
     "error": "La cuenta no existe en la cadena"
   },
   "block": {
@@ -189,7 +193,7 @@
     "btn_out": "Fuera",
     "btn_in": "Dentro"
   },
-  "staking": {
+  "validator": {
     "inflation": "Inflación",
     "unbonding_time": "Tiempo de Desvinculación",
     "double_sign_slashing": "Penalización por Doble Firma",
@@ -198,7 +202,6 @@
     "active": "Activo",
     "inactive": "Inactivo",
     "rank": "Rango",
-    "validator": "Validador",
     "voting_power": "Poder de Voto",
     "24h_changes": "Cambios en 24h",
     "commission": "Comisión",
@@ -227,7 +230,16 @@
     "consensus_pub_key": "Clave Pública de Consenso",
     "liquid_staking": "Staking Líquido",
     "liquid_staking_shares": "Acciones Líquidas",
-    "validator_bond_share": "Participación de Validador Vinculada"
+    "validator_bond_share": "Participación de Validador Vinculada",
+    "total_power": "Poder Total",
+    "final_reward": "Recompensa Final",
+    "earned_reward": "Recompensa Ganada",
+    "validators": "Validadores",
+    "earned": "Ganado",
+    "active": "Activo",
+    "reputation": "Reputación",
+    "missed_blocks": "Bloques Perdidos",
+    "uptime": "Tiempo de Actividad"
   },
   "statesync": {
     "title": "¿Qué es State Sync?",
@@ -298,5 +310,38 @@
     "receive": "Recibir",
     "app_versions": "Versiones de Aplicación",
     "node_info": "Información del Nodo"
+  },
+  "developer": {
+    "monthly_tokens": "Tokens Mensuales",
+    "global_users": "Usuarios Globales",
+    "active_providers": "Proveedores Activos",
+    "models": "Modelos",
+    "throughput": "Rendimiento",
+    "developers": "Desarrolladores",
+    "id": "ID",
+    "name": "Nombre",
+    "email": "Correo electrónico",
+    "projects": "Proyectos",
+    "status": "Estado",
+    "last_active": "Último activo",
+    "active_developers": "Desarrolladores Activos",
+    "inactive_developers": "Desarrolladores Inactivos",
+    "description": "Actividad de desarrolladores y estadísticas de proyectos"
+  },
+  "inference": {
+    "inferences_today": "Inferencias (Hoy)",
+    "inferences_last_week": "Inferencias (Última Semana)",
+    "ai_tokens_today": "Tokens de IA (Hoy)",
+    "ai_tokens_last_week": "Tokens de IA (Última Semana)",
+    "throughput": "Rendimiento",
+    "model": "Modelo",
+    "quantization": "Cuantización",
+    "context": "Contexto",
+    "input_price": "Precio de Entrada",
+    "output_price": "Precio de Salida",
+    "max_throughput": "Rendimiento Máximo",
+    "latency": "Latencia",
+    "no_models": "No hay modelos disponibles",
+    "performance_chart_placeholder": "El gráfico de rendimiento se mostrará aquí"
   }
 }

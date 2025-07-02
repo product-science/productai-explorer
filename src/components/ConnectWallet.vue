@@ -4,6 +4,20 @@ import { useWalletStore, useBlockchain, useDashboard } from '@/stores';
 import { Icon } from '@iconify/vue';
 import { CosmosRestClient } from '@/libs/client';
 
+// TypeScript declarations for wallet objects
+declare global {
+  interface Window {
+    keplr?: any;
+    leap?: any;
+    ethereum?: {
+      request: (params: { method: string; params?: any }) => Promise<any>;
+      isMetaMask?: boolean;
+    };
+    cosmos?: any;
+    cosmsnap?: any;
+  }
+}
+
 const props = defineProps<{
   chainId: string;
   hdPath: string;
@@ -23,10 +37,12 @@ const showModal = ref(false);
 const selectedWallet = ref('');
 const error = ref('');
 const chainConfig = ref('');
+const metamaskSnapInstalled = ref(false);
 
 // Parse wallet params if provided
 const walletOptions = computed(() => {
-  // Always return only Keplr and Leap, ignoring params
+  // Always return Keplr, Leap, and MetaMask, ignoring params
+  //return ['keplr', 'leap', 'metamask'];
   return ['keplr', 'leap'];
 });
 
@@ -37,10 +53,245 @@ const isWalletAvailable = (wallet: string) => {
       return !!window.keplr;
     case 'leap':
       return !!window.leap;
+    case 'metamask':
+      return !!window.ethereum;
     default:
       return false;
   }
 };
+
+// Check if MetaMask supports snaps
+async function isMetaMaskSnapsSupported(): Promise<boolean> {
+  try {
+    if (!window.ethereum) return false;
+    
+    // Method 1: Try wallet_getSnaps (works in Flask and newer MetaMask)
+    try {
+      const snaps = await window.ethereum.request({
+        method: 'wallet_getSnaps',
+        params: []
+      });
+      console.log('wallet_getSnaps successful, snaps supported');
+      return typeof snaps === 'object';
+    } catch (error: any) {
+      console.log('wallet_getSnaps not available:', error.message);
+    }
+    
+    // Method 2: If it's MetaMask, assume it might support snaps
+    // The web3_clientVersion doesn't reflect the actual Chrome extension version
+    if (window.ethereum.isMetaMask) {
+      console.log('MetaMask detected - assuming snap support (will test during installation)');
+      return true;
+    }
+    
+    return false;
+  } catch (error: any) {
+    console.log('MetaMask snaps support check failed:', error);
+    return false;
+  }
+}
+
+// Check if MetaMask Cosmos snap is installed
+async function isCosmosSnapInstalled(): Promise<boolean> {
+  try {
+    if (!window.ethereum) return false;
+    
+    // Method 1: Try wallet_getSnaps API
+    try {
+      const snaps = await window.ethereum.request({
+        method: 'wallet_getSnaps',
+        params: []
+      });
+      
+      // Check for various possible snap IDs
+      const possibleSnapIds = [
+        'npm:@cosmsnap/snap',
+        '@cosmsnap/snap',
+        'cosmsnap'
+      ];
+      
+      const installedSnaps = Object.keys(snaps);
+      console.log('Installed snaps:', installedSnaps);
+      
+      return possibleSnapIds.some(snapId => installedSnaps.includes(snapId));
+    } catch (error: any) {
+      console.log('wallet_getSnaps failed, trying alternative methods:', error.message);
+    }
+    
+    // Method 2: Try to invoke the snap directly (if it exists, this should work)
+    try {
+      await window.ethereum.request({
+        method: 'wallet_invokeSnap',
+        params: {
+          snapId: 'npm:@cosmsnap/snap',
+          request: {
+            method: 'initialized',
+          },
+        },
+      });
+      console.log('Cosmos snap detected via direct invoke');
+      return true;
+    } catch (error: any) {
+      console.log('Direct snap invoke failed:', error.message);
+    }
+    
+    // Method 3: Check for cosmos-specific injected objects (some snaps inject their own objects)
+    if (window.cosmos || (window as any).cosmsnap) {
+      console.log('Cosmos snap detected via injected objects');
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Error checking Cosmos snap:', error);
+    return false;
+  }
+}
+
+// Install MetaMask Cosmos snap
+async function installCosmosSnap(): Promise<boolean> {
+  try {
+    if (!window.ethereum) throw new Error('MetaMask not found');
+    
+    // Try the snap installation API directly
+    console.log('Attempting to install Cosmos snap...');
+    
+    try {
+      await window.ethereum.request({
+        method: 'wallet_requestSnaps',
+        params: {
+          'npm:@cosmsnap/snap': {
+            version: '^0.1.0',
+          },
+        },
+      });
+      
+      console.log('Cosmos snap installation successful, initializing...');
+      
+      // Initialize the snap with default chains
+      await window.ethereum.request({
+        method: 'wallet_invokeSnap',
+        params: {
+          snapId: 'npm:@cosmsnap/snap',
+          request: {
+            method: 'initialize',
+          },
+        },
+      });
+      
+      console.log('Cosmos snap initialized successfully');
+      return true;
+    } catch (snapError: any) {
+      console.log('Snap installation failed:', snapError);
+      
+      if (snapError.message?.includes('does not exist') || snapError.message?.includes('not available')) {
+        // Snap APIs not available - might be older MetaMask
+        throw new Error('Snap APIs not available. Please install the Cosmos snap manually from: https://snaps.metamask.io/snap/npm/cosmsnap/snap/ or update MetaMask to the latest version.');
+      }
+      
+      throw snapError;
+    }
+  } catch (error: any) {
+    if (error.code === 4001) {
+      throw new Error('User rejected the Cosmos snap installation');
+    }
+    
+    console.error('Error installing Cosmos snap:', error);
+    throw new Error(error.message || 'Failed to install Cosmos snap');
+  }
+}
+
+// Add chain to MetaMask Cosmos snap
+async function addChainToCosmosSnap(): Promise<boolean> {
+  try {
+    const chain = chainStore.current;
+    if (!chain) throw new Error('No chain selected');
+    
+    // Convert our chain config to chain registry format
+    const chainInfo = {
+      chain_name: chain.chainName.toLowerCase().replace(/\s+/g, ''),
+      chain_id: props.chainId,
+      pretty_name: chain.chainName,
+      status: 'live',
+      network_type: 'mainnet',
+      bech32_prefix: chain.bech32Prefix,
+      daemon_name: 'gaiad', // Generic daemon name
+      node_home: '$HOME/.gaia',
+      key_algos: ['secp256k1'],
+      slip44: Number(chain.coinType),
+      fees: {
+        fee_tokens: [{
+          denom: chain.assets[0].base,
+          fixed_min_gas_price: chain.keplrPriceStep?.low || 0.01,
+          low_gas_price: chain.keplrPriceStep?.low || 0.01,
+          average_gas_price: chain.keplrPriceStep?.average || 0.025,
+          high_gas_price: chain.keplrPriceStep?.high || 0.03,
+        }]
+      },
+      staking: {
+        staking_tokens: [{
+          denom: chain.assets[0].base,
+        }]
+      },
+      codebase: {
+        git_repo: 'https://github.com/cosmos/gaia',
+        recommended_version: 'v7.0.0',
+        compatible_versions: ['v7.0.0'],
+      },
+      apis: {
+        rpc: chain.endpoints?.rpc?.map(rpc => ({ 
+          address: rpc.address,
+          provider: rpc.provider || 'unknown'
+        })) || [],
+        rest: chain.endpoints?.rest?.map(rest => ({ 
+          address: rest.address,
+          provider: rest.provider || 'unknown'
+        })) || [],
+      }
+    };
+    
+    await window.ethereum.request({
+      method: 'wallet_invokeSnap',
+      params: {
+        snapId: 'npm:@cosmsnap/snap',
+        request: {
+          method: 'addChain',
+          params: {
+            chain_info: JSON.stringify(chainInfo),
+          }
+        },
+      },
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('Error adding chain to Cosmos snap:', error);
+    return false;
+  }
+}
+
+// Get address from MetaMask Cosmos snap
+async function getCosmosSnapAddress(): Promise<string> {
+  try {
+    const address = await window.ethereum.request({
+      method: 'wallet_invokeSnap',
+      params: {
+        snapId: 'npm:@cosmsnap/snap',
+        request: {
+          method: 'getChainAddress',
+          params: {
+            chain_id: props.chainId,
+          }
+        },
+      },
+    });
+    
+    return address;
+  } catch (error) {
+    console.error('Error getting address from Cosmos snap:', error);
+    throw error;
+  }
+}
 
 // Initialize chain configuration
 async function initChainConfig() {
@@ -156,21 +407,22 @@ async function connectWallet(wallet: string) {
       await initChainConfig();
     }
 
-    // Check if chain exists in wallet
-    const chainExists = await checkChainExists(wallet);
-    
-    // If chain doesn't exist, suggest it
-    if (!chainExists) {
-      const suggested = await suggestChain(wallet);
-      if (!suggested) {
-        throw new Error('Failed to add chain to wallet');
-      }
-    }
-
     // Proceed with wallet connection
     switch (wallet) {
       case 'keplr':
         if (!window.keplr) throw new Error('Keplr wallet not found');
+        
+        // Check if chain exists in wallet
+        const keplrChainExists = await checkChainExists(wallet);
+        
+        // If chain doesn't exist, suggest it
+        if (!keplrChainExists) {
+          const suggested = await suggestChain(wallet);
+          if (!suggested) {
+            throw new Error('Failed to add chain to wallet');
+          }
+        }
+        
         await window.keplr.enable(props.chainId);
         const offlineSigner = window.keplr.getOfflineSigner(props.chainId);
         const accounts = await offlineSigner.getAccounts();
@@ -187,6 +439,18 @@ async function connectWallet(wallet: string) {
 
       case 'leap':
         if (!window.leap) throw new Error('Leap wallet not found');
+        
+        // Check if chain exists in wallet
+        const leapChainExists = await checkChainExists(wallet);
+        
+        // If chain doesn't exist, suggest it
+        if (!leapChainExists) {
+          const suggested = await suggestChain(wallet);
+          if (!suggested) {
+            throw new Error('Failed to add chain to wallet');
+          }
+        }
+        
         await window.leap.enable(props.chainId);
         const leapSigner = window.leap.getOfflineSigner(props.chainId);
         const leapAccounts = await leapSigner.getAccounts();
@@ -195,6 +459,52 @@ async function connectWallet(wallet: string) {
             value: {
               wallet: 'leap',
               cosmosAddress: leapAccounts[0].address,
+              hdPath: props.hdPath
+            }
+          }
+        });
+        break;
+
+      case 'metamask':
+        if (!window.ethereum) throw new Error('MetaMask not found');
+        
+        // Re-check if Cosmos snap is installed (in case status is stale)
+        let snapInstalled = await isCosmosSnapInstalled();
+        
+        if (!snapInstalled) {
+          // Try to install the Cosmos snap
+          try {
+            await installCosmosSnap();
+            // Update the snap installation status
+            metamaskSnapInstalled.value = true;
+            snapInstalled = true;
+          } catch (e: any) {
+            // If installation fails due to API unavailability, provide helpful guidance
+            if (e.message?.includes('snaps.metamask.io')) {
+              throw new Error(e.message);
+            }
+            throw new Error(e.message || 'Failed to install Cosmos snap for MetaMask');
+          }
+        } else {
+          // Update the reactive status if it was wrong
+          metamaskSnapInstalled.value = true;
+        }
+        
+        // Add chain to the snap if needed
+        try {
+          await addChainToCosmosSnap();
+        } catch (e) {
+          // Chain might already exist, continue
+          console.log('Chain may already exist in snap:', e);
+        }
+        
+        // Get the address for this chain
+        const metamaskAddress = await getCosmosSnapAddress();
+        emit('connect', {
+          detail: {
+            value: {
+              wallet: 'metamask',
+              cosmosAddress: metamaskAddress,
               hdPath: props.hdPath
             }
           }
@@ -213,8 +523,10 @@ async function connectWallet(wallet: string) {
 }
 
 // Open modal
-function openModal() {
+async function openModal() {
   showModal.value = true;
+  // Check MetaMask snap status when opening modal
+  await checkMetaMaskSnapStatus();
 }
 
 // Close modal
@@ -224,9 +536,54 @@ function closeModal() {
   selectedWallet.value = '';
 }
 
+// Get wallet display name
+function getWalletDisplayName(wallet: string): string {
+  switch (wallet) {
+    case 'keplr':
+      return 'Keplr';
+    case 'leap':
+      return 'Leap';
+    case 'metamask':
+      return 'MetaMask';
+    default:
+      return wallet;
+  }
+}
+
+// Get wallet status message
+function getWalletStatusMessage(wallet: string): string {
+  if (!isWalletAvailable(wallet)) {
+    return '(Not installed)';
+  }
+  
+  if (wallet === 'metamask' && !metamaskSnapInstalled.value) {
+    return '(Requires Cosmos snap)';
+  }
+  
+  return '';
+}
+
+// Check and update MetaMask snap installation status
+async function checkMetaMaskSnapStatus() {
+  if (isWalletAvailable('metamask')) {
+    const snapsSupported = await isMetaMaskSnapsSupported();
+    if (snapsSupported) {
+      metamaskSnapInstalled.value = await isCosmosSnapInstalled();
+    } else {
+      metamaskSnapInstalled.value = false;
+    }
+    console.log('MetaMask snap status:', {
+      snapsSupported,
+      snapInstalled: metamaskSnapInstalled.value,
+      message: snapsSupported ? 'Snaps supported' : 'Snaps not supported - may need MetaMask update'
+    });
+  }
+}
+
 // Initialize chain config when component is mounted
 onMounted(async () => {
   await initChainConfig();
+  await checkMetaMaskSnapStatus();
 });
 
 // Expose methods
@@ -263,9 +620,9 @@ defineExpose({
             :alt="wallet"
             class="w-6 h-6 mr-2"
           />
-          <span class="capitalize">{{ wallet }}</span>
-          <span v-if="!isWalletAvailable(wallet)" class="text-xs text-error ml-2">
-            (Not installed)
+          <span>{{ getWalletDisplayName(wallet) }}</span>
+          <span v-if="getWalletStatusMessage(wallet)" class="text-xs text-warning ml-2">
+            {{ getWalletStatusMessage(wallet) }}
           </span>
         </button>
       </div>

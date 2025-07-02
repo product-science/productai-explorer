@@ -13,8 +13,8 @@ const connectWalletRef = ref<InstanceType<typeof ConnectWallet> | null>(null);
 // walletStore.$subscribe((m, s) => {
 //   console.log(m, s);
 // });
-function walletStateChange(res: any) {
-  walletStore.setConnectedWallet(res.detail?.value);
+async function walletStateChange(res: any) {
+  await walletStore.setConnectedWallet(res.detail?.value);
 }
 let showCopyToast = ref(0);
 async function copyAdress(address: string) {

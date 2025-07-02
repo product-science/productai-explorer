@@ -2,7 +2,9 @@
   "module": {
     "dashboard": "Dashboard",
     "blocks": "Blöcke",
-    "staking": "Validatoren",
+    "validator": "Validatoren",
+    "developer": "Entwickler",
+    "inference": "KI-Inferenzen",
     "governance": "Governance",
     "parameters": "Parameter",
     "uptime": "Verfügbarkeit",
@@ -70,6 +72,8 @@
     "hash": "Hash",
     "messages": "Nachrichten",
     "time": "Zeit",
+    "inferences": "KI-Inferenzen",
+    "no_inferences": "Keine Inferenzen",
     "error": "Konto existiert nicht auf der Chain"
   },
   "block": {
@@ -189,7 +193,7 @@
     "btn_out": "Ausgehend",
     "btn_in": "Eingehend"
   },
-  "staking": {
+  "validator": {
     "inflation": "Inflation",
     "unbonding_time": "Unbonding-Zeit",
     "double_sign_slashing": "Doppelte Signatur-Strafe",
@@ -227,7 +231,16 @@
     "consensus_pub_key": "Konsens-Public-Key",
     "liquid_staking": "Liquid Staking",
     "liquid_staking_shares": "Liquid Shares",
-    "validator_bond_share": "Validator-Anteil"
+    "validator_bond_share": "Validator-Anteil",
+    "total_power": "Gesamtleistung",
+    "final_reward": "Endbelohnung",
+    "earned_reward": "Verdiente Belohnung",
+    "validators": "Validatoren",
+    "earned": "Verdient",
+    "active": "Aktiv",
+    "reputation": "Ruf",
+    "missed_blocks": "Verpasste Blöcke",
+    "uptime": "Betriebszeit"
   },
   "statesync": {
     "title": "Was ist State Sync?",
@@ -298,5 +311,38 @@
     "receive": "Empfangen",
     "app_versions": "Anwendungsversionen",
     "node_info": "Knoteninformationen"
+  },
+  "developer": {
+    "monthly_tokens": "Monatliche Token",
+    "global_users": "Globale Benutzer",
+    "active_providers": "Aktive Anbieter",
+    "models": "Modelle",
+    "throughput": "Durchsatz",
+    "developers": "Entwickler",
+    "id": "ID",
+    "name": "Name",
+    "email": "E-Mail",
+    "projects": "Projekte",
+    "status": "Status",
+    "last_active": "Zuletzt aktiv",
+    "active_developers": "Aktive Entwickler",
+    "inactive_developers": "Inaktive Entwickler",
+    "description": "Entwickleraktivität und Projektstatistiken"
+  },
+  "inference": {
+    "inferences_today": "Inferenzen (Heute)",
+    "inferences_last_week": "Inferenzen (Letzte Woche)",
+    "ai_tokens_today": "KI-Token (Heute)",
+    "ai_tokens_last_week": "KI-Token (Letzte Woche)",
+    "throughput": "Durchsatz",
+    "model": "Modell",
+    "quantization": "Quantisierung",
+    "context": "Kontext",
+    "input_price": "Eingabepreis",
+    "output_price": "Ausgabepreis",
+    "max_throughput": "Max. Durchsatz",
+    "latency": "Latenz",
+    "no_models": "Keine Modelle verfügbar",
+    "performance_chart_placeholder": "Leistungsdiagramm wird hier angezeigt"
   }
 }

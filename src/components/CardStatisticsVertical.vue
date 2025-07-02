@@ -9,6 +9,7 @@ interface Props {
   stats: string;
   change?: number;
   subtitle?: string;
+  subSymbol?: string;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -33,6 +34,14 @@ const isPositive = controlledComputed(
           class="absolute top-0 left-0 bottom-0 right-0 opacity-20"
           :class="[`bg-${props?.color}`]"
         ></div>
+        <div
+          v-if="props.subSymbol"
+          class="absolute -bottom-0 -right-0 px-1 font-semibold"
+          :class="[`text-${props?.color}`]"
+          style="font-size: 0.5rem;"
+        >
+          {{ props.subSymbol }}
+        </div>
       </div>
 
       <div
