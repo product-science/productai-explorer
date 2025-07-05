@@ -5,7 +5,7 @@ import type { Validator } from '@/types';
 
 export interface ParticipantStats {
   account_address: string;
-  validator_operator_addres: string;
+  operator_address: string;
   reputation: number;
   rewarded_coins_current_epoch: string;
   earned_coins_current_epoch: string;
@@ -32,7 +32,7 @@ export const useValidatorStore = defineStore('validatorStore', () => {
   const getValidatorStats = computed(() => {
     return (validatorAddress: string) => {
       const stats = participantsStats.value.find(
-        (stat) => stat.validator_operator_addres === validatorAddress
+        (stat) => stat.operator_address === validatorAddress
       );
       return stats || {
         earned_coins_current_epoch: "0",

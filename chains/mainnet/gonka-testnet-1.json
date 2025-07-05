@@ -1,13 +1,13 @@
 {
   "chain_name": "gonka-testnet-1",
   "api": [
-    {"provider": "Local Node", "address": "http://127.0.0.1:80/chain-api"}
+    {"provider": "Local Node", "address": "{ORIGIN}/chain-api"}
   ],
   "rpc": [
-      {"provider": "Local Node", "address": "http://127.0.0.1:80/chain-rpc"}
+      {"provider": "Local Node", "address": "{ORIGIN}/chain-rpc"}
   ],
   "inference_api": [
-    {"provider": "Local Node", "address": "http://127.0.0.1:80/api"}
+    {"provider": "Local Node", "address": "{ORIGIN}/api"}
   ],
   "features": [
     "validator",

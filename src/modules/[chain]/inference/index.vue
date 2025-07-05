@@ -8,6 +8,7 @@ import {
 
 import { Icon } from '@iconify/vue';
 import CardStatisticsVertical from '@/components/CardStatisticsVertical.vue';
+import ModelPerformanceChart from '@/components/charts/ModelPerformanceChart.vue';
 import { ref, computed, watch, onMounted } from 'vue';
 import { useWalletStore, useBaseStore, useBlockchain } from '@/stores';
 import ConnectWallet from '@/components/ConnectWallet.vue';
@@ -209,15 +210,10 @@ function updateState() {
   <!-- Fourth Row: Model Performance Chart -->
   <div class="bg-base-100 rounded mt-4 shadow">
       <div class="px-4 pt-4 pb-2 text-lg font-semibold text-main">
-          Model Performance Overview
+          Tokens processed per day
       </div>
       <div class="px-4 pb-4">
-          <div class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-8 flex items-center justify-center">
-              <div class="text-center">
-                  <Icon icon="mdi:chart-line" class="text-4xl text-gray-400 mb-2" />
-                  <p class="text-gray-500">{{ $t('inference.performance_chart_placeholder') }}</p>
-              </div>
-          </div>
+          <ModelPerformanceChart />
       </div>
   </div>
 </div>

@@ -10,7 +10,7 @@ import DefineOptions from 'unplugin-vue-define-options/vite';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 export default defineConfig({
-    base: '/v1/explorer',
+    base: '/dashboard',
     define: {
         global: 'window',
         'process.env': {},

@@ -41,7 +41,34 @@ Remember to bear this behavior in mind when selecting a DNS host name for self h
 - **chain_name** the name to identify the chain on ping.pub, config file **must** have same name. 
 - **api** the rest api endpoint.(make sure that CORS is enabled: `Allow-Control-Allow-Origin: *`)
 - **rpc** the rpc endpoint, make sure that the port is added. rpc endpoint is only used for state sync. it's optional.
-- **assets** Native Assets on blockchain. 
+- **assets** Native Assets on blockchain.
+
+## URL Placeholders
+
+You can use dynamic URL placeholders in your configuration to make deployment easier:
+
+- `{ORIGIN}` - Full origin (protocol + hostname + port)
+- `{HOST}` - Hostname only
+- `{PORT}` - Port number
+- `{PROTOCOL}` - Protocol without colon
+
+### Example with placeholders:
+```json
+{
+  "chain_name": "my-chain",
+  "api": [
+    {"provider": "Local Node", "address": "{ORIGIN}/chain-api"}
+  ],
+  "rpc": [
+    {"provider": "Local Node", "address": "{ORIGIN}/chain-rpc"}
+  ],
+  "inference_api": [
+    {"provider": "Local Node", "address": "{ORIGIN}/api"}
+  ]
+}
+```
+
+This automatically resolves to the current deployment URL, making the same config file work across different environments. 
 
 Endpoint providers will be listed in the "Popular" tab of the staking.
 

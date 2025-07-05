@@ -18,6 +18,24 @@ export interface ModelData {
   coins_per_output_token: string;
 }
 
+export interface ModelStatsData {
+  model: string;
+  ai_tokens: string;
+  inferences: number;
+}
+
+export interface DailyModelStats {
+  date: string;
+  timestamp: number;
+  stats_models: ModelStatsData[];
+}
+
+export interface ChartSeriesData {
+  name: string;
+  data: number[];
+  color: string;
+}
+
 export const useInferenceStore = defineStore('inferenceStore', () => {
   const blockchain = useBlockchain();
   
@@ -38,6 +56,232 @@ export const useInferenceStore = defineStore('inferenceStore', () => {
   
   const loading = ref(false);
   const error = ref<string | null>(null);
+
+  // New state for 30-day data
+  const dailyStats = ref<DailyModelStats[]>([]);
+  const chartLoading = ref(false);
+  const chartError = ref<string | null>(null);
+
+  // Cache key for localStorage
+  const CACHE_KEY = 'inference_30day_cache';
+  const CACHE_MODELS_KEY = 'inference_models_cache';
+
+  // Generate consistent color for model based on its name
+  function generateModelColor(modelName: string): string {
+    const colors = [
+      '#bbe81a', '#ff5f0b', '#43ebef', '#1999e5', '#230b2c', '#628be8', 
+      '#aa5343', '#c9fa89', '#e88ea8', '#72e4a2', '#38cd87', '#515e13', 
+      '#7bf8f5', '#83dd6e', '#e8b203', '#7d11d5', '#3e4927', '#f303e2', 
+      '#249493', '#50e5e6', '#11deb2', '#a2f9c7', '#2a7bdc', '#47383a', 
+      '#226da4', '#966319', '#1bdf99', '#f3ab0c', '#961f50', '#832efd', 
+      '#875287', '#4bebe7', '#1d3d2e', '#9caea4', '#2772f5', '#938bf1', 
+      '#6228a5', '#24fea5', '#c9bbc8', '#e27225', '#54bd9f', '#babb2d', 
+      '#bcf591', '#803b36', '#124f03'
+    ];
+    
+    // Create hash from model name
+    let hash = 0;
+    for (let i = 0; i < modelName.length; i++) {
+      const char = modelName.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    
+    // Use hash to consistently select color
+    const colorIndex = Math.abs(hash) % colors.length;
+    return colors[colorIndex];
+  }
+
+  // Get cached data from localStorage
+  function getCachedData(): DailyModelStats[] {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch (error) {
+      console.error('Error reading cache:', error);
+    }
+    return [];
+  }
+
+  // Save data to localStorage and manage cache size
+  function setCachedData(data: DailyModelStats[]) {
+    try {
+      // Sort by timestamp and keep only last 30 days
+      const sortedData = data.sort((a, b) => b.timestamp - a.timestamp);
+      const last30Days = sortedData.slice(0, 30);
+      
+      localStorage.setItem(CACHE_KEY, JSON.stringify(last30Days));
+      localStorage.setItem(CACHE_MODELS_KEY, JSON.stringify(Date.now()));
+    } catch (error) {
+      console.error('Error saving cache:', error);
+    }
+  }
+
+  // Check if we need to fetch data for a specific day
+  function needsFetch(date: string): boolean {
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Always fetch fresh data for today
+    if (date === today) {
+      return true;
+    }
+    
+    // For other days, check if we have cached data
+    const cached = getCachedData();
+    return !cached.some(item => item.date === date);
+  }
+
+  // Fetch data for a specific day
+  async function fetchDayData(date: string): Promise<DailyModelStats | null> {
+    try {
+      if (!blockchain.endpoint.address) {
+        throw new Error('No blockchain endpoint configured');
+      }
+
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const timeFrom = startOfDay.getTime();
+      const timeTo = endOfDay.getTime();
+
+      const response = await fetch(
+        `${blockchain.endpoint.address}/productscience/inference/inference/models_stats_by_time?time_from=${timeFrom}&time_to=${timeTo}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      return {
+        date,
+        timestamp: startOfDay.getTime(),
+        stats_models: data.stats_models || []
+      };
+    } catch (error) {
+      console.error(`Error fetching data for ${date}:`, error);
+      return null;
+    }
+  }
+
+  // Fetch 30 days of data
+  // Strategy: Always fetch fresh data for today (constantly changing),
+  // use cached data for the other 29 days to optimize performance
+  async function fetch30DayData() {
+    try {
+      chartLoading.value = true;
+      chartError.value = null;
+
+      const cachedData = getCachedData();
+      const today = new Date();
+      const fetchPromises: Promise<DailyModelStats | null>[] = [];
+
+      // Generate dates for last 30 days
+      for (let i = 0; i < 30; i++) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        const dateString = date.toISOString().split('T')[0];
+
+        if (needsFetch(dateString)) {
+          fetchPromises.push(fetchDayData(dateString));
+        }
+      }
+
+      // Fetch missing data
+      const fetchedData = await Promise.all(fetchPromises);
+      const validFetchedData = fetchedData.filter(item => item !== null) as DailyModelStats[];
+
+      // Combine cached and fetched data, prioritizing fresh data over cached
+      const allData = [...cachedData, ...validFetchedData];
+      
+      // Remove duplicates, prioritizing fresh data (especially for today)
+      const uniqueData = allData.reduce((acc: DailyModelStats[], current) => {
+        const existingIndex = acc.findIndex(item => item.date === current.date);
+        
+        if (existingIndex === -1) {
+          // No existing data for this date, add it
+          acc.push(current);
+        } else {
+          // Data exists, replace it if current data is fresher (from validFetchedData)
+          const isFromFreshFetch = validFetchedData.some(item => item.date === current.date);
+          if (isFromFreshFetch) {
+            acc[existingIndex] = current;
+          }
+        }
+        
+        return acc;
+      }, []);
+
+      // Sort by date (newest first)
+      uniqueData.sort((a, b) => b.timestamp - a.timestamp);
+
+      // Update state and cache
+      dailyStats.value = uniqueData.slice(0, 30);
+      setCachedData(uniqueData);
+
+    } catch (error) {
+      console.error('Error fetching 30-day data:', error);
+      chartError.value = error instanceof Error ? error.message : 'Failed to fetch chart data';
+    } finally {
+      chartLoading.value = false;
+    }
+  }
+
+  // Generate chart series data
+  const chartSeries = computed((): ChartSeriesData[] => {
+    if (dailyStats.value.length === 0) return [];
+
+    // Get all unique models
+    const modelNames = new Set<string>();
+    dailyStats.value.forEach(day => {
+      day.stats_models.forEach(model => {
+        modelNames.add(model.model);
+      });
+    });
+
+    // Calculate total usage per model for sorting
+    const modelTotals = new Map<string, number>();
+    Array.from(modelNames).forEach(modelName => {
+      const total = dailyStats.value.reduce((sum, day) => {
+        const modelStats = day.stats_models.find(m => m.model === modelName);
+        return sum + parseInt(modelStats?.ai_tokens || '0');
+      }, 0);
+      modelTotals.set(modelName, total);
+    });
+
+    // Sort models by total usage (largest to smallest for better stacking)
+    const sortedModelNames = Array.from(modelNames).sort((a, b) => {
+      return (modelTotals.get(b) || 0) - (modelTotals.get(a) || 0);
+    });
+
+    // Create series for each model in sorted order
+    return sortedModelNames.map(modelName => {
+      const data = dailyStats.value
+        .sort((a, b) => a.timestamp - b.timestamp) // Sort chronologically for chart
+        .map(day => {
+          const modelStats = day.stats_models.find(m => m.model === modelName);
+          return parseInt(modelStats?.ai_tokens || '0');
+        });
+
+      return {
+        name: modelName,
+        data,
+        color: generateModelColor(modelName)
+      };
+    });
+  });
+
+  // Generate chart categories (dates)
+  const chartCategories = computed((): string[] => {
+    return dailyStats.value
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map(day => day.date);
+  });
 
   // Getters with loading/error handling
   const displayInferencesToday = computed(() => {
@@ -174,11 +418,46 @@ export const useInferenceStore = defineStore('inferenceStore', () => {
     }
   }
 
+  // Refresh only today's data (useful for periodic updates)
+  async function refreshTodayData() {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const todayData = await fetchDayData(today);
+      
+      if (todayData) {
+        const cachedData = getCachedData();
+        const allData = [...cachedData, todayData];
+        
+        // Remove duplicates, prioritizing fresh today data
+        const uniqueData = allData.reduce((acc: DailyModelStats[], current) => {
+          const existingIndex = acc.findIndex(item => item.date === current.date);
+          
+          if (existingIndex === -1) {
+            acc.push(current);
+          } else if (current.date === today) {
+            // Always replace today's data with fresh data
+            acc[existingIndex] = current;
+          }
+          
+          return acc;
+        }, []);
+        
+        // Sort by date (newest first) and update state
+        uniqueData.sort((a, b) => b.timestamp - a.timestamp);
+        dailyStats.value = uniqueData.slice(0, 30);
+        setCachedData(uniqueData);
+      }
+    } catch (error) {
+      console.error('Error refreshing today data:', error);
+    }
+  }
+
   async function init() {
     await Promise.all([
       fetchStats24h(),
       fetchStats7d(),
-      fetchModels()
+      fetchModels(),
+      fetch30DayData()
     ]);
   }
 
@@ -194,8 +473,11 @@ export const useInferenceStore = defineStore('inferenceStore', () => {
       actual_inferences_cost: '0'
     };
     models.value = [];
+    dailyStats.value = [];
     loading.value = false;
     error.value = null;
+    chartLoading.value = false;
+    chartError.value = null;
   }
 
   return {
@@ -206,6 +488,11 @@ export const useInferenceStore = defineStore('inferenceStore', () => {
     loading,
     error,
     
+    // New state
+    dailyStats,
+    chartLoading,
+    chartError,
+    
     // Getters
     displayInferencesToday,
     displayInferencesLastWeek,
@@ -214,11 +501,20 @@ export const useInferenceStore = defineStore('inferenceStore', () => {
     displayCostToday,
     displayCostLastWeek,
     
+    // New getters
+    chartSeries,
+    chartCategories,
+    
     // Actions
     fetchStats24h,
     fetchStats7d,
     fetchModels,
     init,
     $reset,
+    
+    // New actions
+    fetch30DayData,
+    refreshTodayData,
+    generateModelColor,
   };
 }); 

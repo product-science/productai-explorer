@@ -135,6 +135,18 @@ export interface LocalConfig {
   };
 }
 
+// Helper function to replace URL placeholders
+function replaceUrlPlaceholders(url: string): string {
+  if (typeof window !== 'undefined' && window.location) {
+    return url
+      .replace(/{ORIGIN}/g, window.location.origin)
+      .replace(/{HOST}/g, window.location.hostname)
+      .replace(/{PORT}/g, window.location.port || (window.location.protocol === 'https:' ? '443' : '80'))
+      .replace(/{PROTOCOL}/g, window.location.protocol.replace(':', ''));
+  }
+  return url;
+}
+
 function apiConverter(api: any[]) {
   if (!api) return [];
   const array = typeof api === 'string' ? [api] : api;
@@ -142,11 +154,14 @@ function apiConverter(api: any[]) {
     if (typeof x === 'string') {
       const parts = String(x).split('.');
       return {
-        address: x,
+        address: replaceUrlPlaceholders(x),
         provider: parts.length >= 2 ? parts[parts.length - 2] : x,
       };
     } else {
-      return x as Endpoint;
+      return {
+        ...x,
+        address: replaceUrlPlaceholders(x.address)
+      } as Endpoint;
     }
   });
 }
