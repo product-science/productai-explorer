@@ -28,6 +28,7 @@ export interface DailyModelStats {
   date: string;
   timestamp: number;
   stats_models: ModelStatsData[];
+  syncedAt?: number; // When this data was fetched/synced
 }
 
 export interface ChartSeriesData {
@@ -122,15 +123,39 @@ export const useInferenceStore = defineStore('inferenceStore', () => {
   // Check if we need to fetch data for a specific day
   function needsFetch(date: string): boolean {
     const today = new Date().toISOString().split('T')[0];
+    const cached = getCachedData();
+    const cachedItem = cached.find(item => item.date === date);
     
-    // Always fetch fresh data for today
+    // If no cached data exists, we need to fetch
+    if (!cachedItem) {
+      return true;
+    }
+    
+    // Always fetch fresh data for today (it's constantly changing)
     if (date === today) {
       return true;
     }
     
-    // For other days, check if we have cached data
-    const cached = getCachedData();
-    return !cached.some(item => item.date === date);
+    // Check if cached data was synced today - if so, it might be incomplete for previous days
+    if (cachedItem.syncedAt) {
+      const syncDate = new Date(cachedItem.syncedAt).toISOString().split('T')[0];
+      const currentDate = new Date().toISOString().split('T')[0];
+      
+      // If data was synced today and it's for yesterday or earlier, resync it
+      // (because yesterday's data might have been incomplete when we first fetched it today)
+      if (syncDate === currentDate && date < currentDate) {
+        const hoursSinceSynced = (Date.now() - cachedItem.syncedAt) / (1000 * 60 * 60);
+        
+        // Only resync if it's been less than 12 hours since last sync
+        // (to avoid constantly refetching old data)
+        if (hoursSinceSynced < 12) {
+          return true;
+        }
+      }
+    }
+    
+    // Data exists and doesn't need resyncing
+    return false;
   }
 
   // Fetch data for a specific day
@@ -148,9 +173,9 @@ export const useInferenceStore = defineStore('inferenceStore', () => {
       const timeFrom = startOfDay.getTime();
       const timeTo = endOfDay.getTime();
 
-      const response = await fetch(
-        `${blockchain.endpoint.address}/productscience/inference/inference/models_stats_by_time?time_from=${timeFrom}&time_to=${timeTo}`
-      );
+      const url = `${blockchain.endpoint.address}/productscience/inference/inference/models_stats_by_time?time_from=${timeFrom}&time_to=${timeTo}`;
+
+      const response = await fetch(url);
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -161,7 +186,8 @@ export const useInferenceStore = defineStore('inferenceStore', () => {
       return {
         date,
         timestamp: startOfDay.getTime(),
-        stats_models: data.stats_models || []
+        stats_models: data.stats_models || [],
+        syncedAt: Date.now()
       };
     } catch (error) {
       console.error(`Error fetching data for ${date}:`, error);
@@ -169,9 +195,13 @@ export const useInferenceStore = defineStore('inferenceStore', () => {
     }
   }
 
-  // Fetch 30 days of data
-  // Strategy: Always fetch fresh data for today (constantly changing),
-  // use cached data for the other 29 days to optimize performance
+  // Fetch 30 days of data with intelligent caching
+  // Strategy: 
+  // 1. Always fetch fresh data for today (constantly changing)
+  // 2. Use cached data for previous days, BUT:
+  //    - If data was synced today and it's for yesterday/earlier, resync it 
+  //      (within 12h window to get complete data)
+  //    - This ensures we don't keep incomplete data from early morning fetches
   async function fetch30DayData() {
     try {
       chartLoading.value = true;

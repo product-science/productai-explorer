@@ -216,6 +216,11 @@ const isLoading = computed(() => {
   return inferenceStore.chartLoading;
 });
 
+// Add a new computed to check if we're in initial state or actually loading
+const isInitialLoading = computed(() => {
+  return inferenceStore.chartLoading || (inferenceStore.dailyStats.length === 0 && !inferenceStore.chartError);
+});
+
 const hasError = computed(() => {
   return inferenceStore.chartError !== null;
 });
@@ -275,17 +280,17 @@ onUnmounted(() => {
 <template>
   <div class="w-full">
     <!-- Chart Header with Refresh Button -->
-    <div v-if="!isLoading && !hasError && hasData" class="flex justify-between items-center mb-4">
+    <div v-if="!isInitialLoading && !hasError && hasData" class="flex justify-between items-center mb-4">
       <div class="text-sm text-gray-500">
         Last 30 days
         <span v-if="lastRefreshText" class="ml-2 text-xs opacity-75">
           • Last updated {{ lastRefreshText }}
         </span>
       </div>
-      <button 
+              <button 
         @click="refreshTodayData()"
         class="btn btn-sm btn-ghost gap-2 hover:bg-base-200"
-        :disabled="isLoading"
+        :disabled="isInitialLoading"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
@@ -295,7 +300,7 @@ onUnmounted(() => {
     </div>
 
     <!-- Loading State -->
-    <div v-if="isLoading" class="flex items-center justify-center h-64">
+    <div v-if="isInitialLoading" class="flex items-center justify-center h-64">
       <div class="flex flex-col items-center">
         <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         <p class="mt-2 text-sm text-gray-500">Loading chart data...</p>
