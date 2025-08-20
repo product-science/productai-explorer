@@ -18,13 +18,45 @@ async function walletStateChange(res: any) {
 }
 let showCopyToast = ref(0);
 async function copyAdress(address: string) {
+  // Add validation for the address
+  if (!address || address.trim() === '') {
+    showCopyToast.value = 2;
+    setTimeout(() => {
+      showCopyToast.value = 0;
+    }, 1000);
+    console.error('Cannot copy empty address');
+    return;
+  }
+
   try {
-    await navigator.clipboard.writeText(address);
+    // Check if clipboard API is available
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(address);
+    } else {
+      // Fallback for non-secure contexts or unsupported browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = address;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      textArea.style.top = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+      
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      
+      if (!successful) {
+        throw new Error('Fallback copy method failed');
+      }
+    }
+    
     showCopyToast.value = 1;
     setTimeout(() => {
       showCopyToast.value = 0;
     }, 1000);
   } catch (err) {
+    console.error('Copy failed:', err);
     showCopyToast.value = 2;
     setTimeout(() => {
       showCopyToast.value = 0;
@@ -35,15 +67,6 @@ const tipMsg = computed(() => {
   return showCopyToast.value === 2
     ? { class: 'error', msg: 'Copy Error!' }
     : { class: 'success', msg: 'Copy Success!' };
-});
-
-const params = computed(() => {
-  if (chainStore.chainName == 'side') {
-    return JSON.stringify({
-      wallet: ['okex', 'unisat'],
-   });
-  }
-  return "";
 });
 
 function openConnectWallet() {
@@ -70,11 +93,14 @@ function openConnectWallet() {
         {{ walletStore.connectedWallet?.wallet }}
       </div>
       <div>
-        <a v-if="walletStore.currentAddress"
+        <a v-if="walletStore.currentAddress && walletStore.currentAddress.trim() !== ''"
           class="block py-2 px-2 hover:bg-gray-100 dark:hover:bg-[#353f5a] rounded cursor-pointer"
           style="overflow-wrap: anywhere" @click="copyAdress(walletStore.currentAddress)">
           {{ walletStore.currentAddress }}
         </a>
+        <div v-else-if="walletStore?.currentAddress === ''" class="block py-2 px-2 text-gray-400 text-sm">
+          Address not available
+        </div>
         <div class="divider mt-1 mb-1"></div>
         <RouterLink to="/wallet/accounts">
           <div class="block py-2 px-2 hover:!bg-gray-100 rounded cursor-pointer">Accounts</div>
@@ -110,8 +136,7 @@ function openConnectWallet() {
       :hd-path="chainStore.defaultHDPath"
       :addr-prefix="chainStore.current?.bech32Prefix || 'cosmos'" 
       @connect="walletStateChange"
-      @keplr-config="walletStore.suggestChain()"  
-      :params="params" 
+      @keplr-config="walletStore.suggestChain()"
     />
   </Teleport>
 </template>

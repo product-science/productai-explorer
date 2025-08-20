@@ -30,7 +30,7 @@ function page(p: number) {
 }
 
 </script>
-<!--
+
 <template>
     <div>
         <div class="tabs tabs-boxed bg-transparent mb-4 text-center">
@@ -51,4 +51,3 @@ function page(p: number) {
     }
   }
 </route>
--->

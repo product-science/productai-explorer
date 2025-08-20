@@ -93,6 +93,7 @@ export interface ChainConfig {
     address_limit: number,
     fees: string
   };
+  min_tx_fee?: string;
 }
 
 export interface LocalConfig {
@@ -210,6 +211,7 @@ export function fromLocal(lc: LocalConfig): ChainConfig {
   conf.keplrPriceStep = lc.keplr_price_step;
   conf.themeColor = lc.theme_color;
   conf.faucet = lc.faucet;
+  conf.min_tx_fee = lc.min_tx_fee;
   return conf;
 }
 

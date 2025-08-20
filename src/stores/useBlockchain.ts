@@ -265,6 +265,57 @@ export const useBlockchain = defineStore('blockchain', {
         return await get(url);
       }
     },
+
+    // Liquidity Pool API methods
+    async getLiquidityPoolInfo() {
+      if (!this.endpoint.address) {
+        throw new Error('Chain API endpoint not configured');
+      }
+      
+      const url = `${this.endpoint.address}/productscience/inference/inference/liquidity_pool`;
+      return await get(url);
+    },
+
+    async getApprovedTokensForTrade() {
+      if (!this.endpoint.address) {
+        throw new Error('Chain API endpoint not configured');
+      }
+
+      const url = `${this.endpoint.address}/productscience/inference/inference/approved_tokens_for_trade`;
+      return await get(url);
+    },
+
+    async getWrappedTokenBalances(address: string) {
+      if (!this.endpoint.address) {
+        throw new Error('Chain API endpoint not configured');
+      }
+      
+      const url = `${this.endpoint.address}/productscience/inference/inference/wrapped_token_balances/${address}`;
+      return await get(url);
+    },
+
+    async calculateTokensFromWrappedToken(poolAddress: string, usdAmount: string) {
+      if (!this.endpoint.address) {
+        throw new Error('Chain API endpoint not configured');
+      }
+      
+      const query = JSON.stringify({ calculate_tokens: { usd_amount: usdAmount } });
+      const encodedQuery = btoa(query);
+      const url = `${this.endpoint.address}/cosmwasm/wasm/v1/contract/${poolAddress}/smart/${encodedQuery}`;
+      
+      return await get(url);
+    },
+
+    async getCw20TokenInfo(contractAddress: string) {
+      if (!this.endpoint.address) {
+        throw new Error('Chain API endpoint not configured');
+      }
+
+      const query = JSON.stringify({ token_info: {} });
+      const encodedQuery = btoa(query);
+      const url = `${this.endpoint.address}/cosmwasm/wasm/v1/contract/${contractAddress}/smart/${encodedQuery}`;
+      return await get(url);
+    },
     async setCurrent(name: string) {
       // Ensure chains are loaded due to asynchronous calls.
       if(this.dashboard.length === 0) {

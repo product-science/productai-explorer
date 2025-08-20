@@ -104,16 +104,6 @@ const tipMsg = computed(() => {
     : { class: 'success', msg: 'Copy Success!' };
 });
 
-// Chain parameters for wallet connection
-const params = computed(() => {
-  if (blockchain.chainName == 'side') {
-    return JSON.stringify({
-      wallet: ['okex', 'unisat'],
-   });
-  }
-  return "";
-});
-
 // From index.vue for account control
 const change = computed(() => {
   const token = walletStore.balanceOfStakingToken;

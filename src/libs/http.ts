@@ -29,7 +29,41 @@ try {
 }
 // */
 export async function get(url: string) {
-  return (await fetch(url, {referrerPolicy: 'origin-when-cross-origin'})).json();
+  const response = await fetch(url, {referrerPolicy: 'origin-when-cross-origin'});
+  
+  // Check if response is successful
+  if (!response.ok) {
+    let errorMessage = `HTTP error: ${response.status} ${response.statusText}`;
+    try {
+      // Try to get error details from response body if it exists
+      const errorText = await response.text();
+      if (errorText) {
+        errorMessage += ` - ${errorText}`;
+      }
+    } catch (e) {
+      // Ignore errors when reading response text
+    }
+    throw new Error(errorMessage);
+  }
+  
+  // Check if response has content
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    const text = await response.text();
+    if (!text.trim()) {
+      // Return empty object for empty responses
+      return {};
+    }
+    // Try to parse as JSON anyway, but handle the error
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      throw new Error(`Invalid JSON response: ${text}`);
+    }
+  }
+  
+  // Parse JSON response
+  return response.json();
 }
 
 export async function getB(url: string) {
@@ -49,6 +83,38 @@ export async function post(url: string, data: any) {
     },
     body: JSON.stringify(data), // body data type must match "Content-Type" header
   });
-  // const response = axios.post((config ? config.api : this.config.api) + url, data)
-  return response.json(); // parses JSON response into native JavaScript objects
+  
+  // Check if response is successful
+  if (!response.ok) {
+    let errorMessage = `HTTP error: ${response.status} ${response.statusText}`;
+    try {
+      // Try to get error details from response body if it exists
+      const errorText = await response.text();
+      if (errorText) {
+        errorMessage += ` - ${errorText}`;
+      }
+    } catch (e) {
+      // Ignore errors when reading response text
+    }
+    throw new Error(errorMessage);
+  }
+  
+  // Check if response has content
+  const contentType = response.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    const text = await response.text();
+    if (!text.trim()) {
+      // Return empty object for empty responses
+      return {};
+    }
+    // Try to parse as JSON anyway, but handle the error
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      throw new Error(`Invalid JSON response: ${text}`);
+    }
+  }
+  
+  // Parse JSON response
+  return response.json();
 }

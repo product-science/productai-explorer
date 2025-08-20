@@ -81,7 +81,7 @@ dayjs()
     >
       <div class="flex justify-between mt-1 pl-4 py-4 mb-1">
         <h1 class="flex-1 ml-3 text-2xl font-semibold dark:text-white">
-          Gonka.ai
+          Gonka
         </h1>
         <div
           class="pr-4 cursor-pointer xl:!hidden"

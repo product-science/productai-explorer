@@ -1,7 +1,10 @@
 import { defineStore } from 'pinia';
 import { useBlockchain } from './useBlockchain';
 import { useBaseStore } from './useBaseStore';
-import { fromBech32, toBech32 } from '@cosmjs/encoding';
+import { fromBech32, toBech32, toUtf8 } from '@cosmjs/encoding';
+import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
+import type { MsgExecuteContractEncodeObject } from '@cosmjs/cosmwasm-stargate';
+import { Tendermint37Client } from "@cosmjs/tendermint-rpc";
 import type {
   Delegation,
   Coin,
@@ -23,6 +26,9 @@ declare global {
         address: Uint8Array;
         bech32Address: string;
       }>;
+      enable: (chainId: string) => Promise<void>;
+      getOfflineSigner: (chainId: string) => any;
+      experimentalSuggestChain?: (chainInfo: any) => Promise<void>;
     };
     leap?: {
       getKey: (chainId: string) => Promise<{
@@ -32,6 +38,8 @@ declare global {
         address: Uint8Array;
         bech32Address: string;
       }>;
+      enable: (chainId: string) => Promise<void>;
+      getOfflineSigner: (chainId: string) => any;
     };
   }
 }
@@ -58,8 +66,25 @@ export const useWalletStore = defineStore('walletStore', {
       if(this.wallet.cosmosAddress) return this.wallet
       const chainStore = useBlockchain();
       const key = chainStore.defaultHDPath;
-      const connected = JSON.parse(localStorage.getItem(key) || '{}');
-      return connected
+      
+      try {
+        const stored = localStorage.getItem(key);
+        if (stored) {
+          const connected = JSON.parse(stored);
+          // Validate that the stored data has required fields
+          if (connected && connected.cosmosAddress && connected.wallet) {
+            return connected;
+          } else {
+            console.warn('Invalid stored wallet data, clearing localStorage');
+            localStorage.removeItem(key);
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing stored wallet data:', error);
+        localStorage.removeItem(key);
+      }
+      
+      return {};
     },
     balanceOfStakingToken(): Coin {
       const stakingStore = useStakingStore();
@@ -100,9 +125,16 @@ export const useWalletStore = defineStore('walletStore', {
     },
     currentAddress() {
       if (!this.connectedWallet?.cosmosAddress) return '';
-      const { prefix, data } = fromBech32(this.connectedWallet.cosmosAddress);
-      const chainStore = useBlockchain();
-      return toBech32(chainStore.current?.bech32Prefix || prefix, data);
+      
+      try {
+        const { prefix, data } = fromBech32(this.connectedWallet.cosmosAddress);
+        const chainStore = useBlockchain();
+        const targetPrefix = chainStore.current?.bech32Prefix || prefix;
+        return toBech32(targetPrefix, data);
+      } catch (error) {
+        console.error('Error converting address:', error, 'Original address:', this.connectedWallet.cosmosAddress);
+        return '';
+      }
     },
     shortAddress() {
       const address: string = this.currentAddress
@@ -238,21 +270,43 @@ export const useWalletStore = defineStore('walletStore', {
       this.$reset()
     },
     async setConnectedWallet(value: WalletConnected) {
-      if(value) {
+      if(value && value.cosmosAddress && value.wallet) {
         this.wallet = value;
+        
+        // Persist to localStorage for consistency
+        const chainStore = useBlockchain();
+        const key = chainStore.defaultHDPath;
+        if (key) {
+          localStorage.setItem(key, JSON.stringify(value));
+        }
+        
         // Auto-submit participant after wallet connection
         await this.autoSubmitParticipant();
+      } else {
+        console.warn('Invalid wallet connection data:', value);
       }
     },
 
     async autoSubmitParticipant() {
       try {
+        // Check if auto-submission is enabled (can be disabled via localStorage or env)
+        const autoSubmitEnabled = localStorage.getItem('inference-auto-submit') !== 'false' && 
+                                 !process?.env?.DISABLE_AUTO_PARTICIPANT_SUBMIT;
+        
+        if (!autoSubmitEnabled) {
+          console.log('⏭️ Auto-participant submission is disabled');
+          return;
+        }
+
         // Only proceed if we have a current address and inference API is available
         if (!this.currentAddress || !this.blockchain.inferenceApiEndpoint) {
+          console.log('⏭️ Skipping auto-participant submission: missing address or inference API endpoint');
           return;
         }
 
         console.log('🔄 Auto-submitting participant for:', this.currentAddress);
+
+
 
         // First, try to get public key from account (chain)
         let publicKey = await this.getWalletPublicKey();
@@ -286,6 +340,11 @@ export const useWalletStore = defineStore('walletStore', {
       } catch (error) {
         // Don't throw error to avoid breaking wallet connection flow
         console.warn('⚠️ Auto-participant submission failed:', error);
+        
+        // If it's a network error, suggest the user check if the inference API is running
+        if (error instanceof Error && (error.message.includes('fetch') || error.message.includes('Failed to fetch'))) {
+          console.warn('💡 Hint: Make sure the inference API is running at:', this.blockchain.inferenceApiEndpoint);
+        }
       }
     },
     suggestChain() {
@@ -495,6 +554,243 @@ export const useWalletStore = defineStore('walletStore', {
         throw new Error('All payload formats failed');
       } catch (error) {
         console.error('Error sending admin transaction (alt format):', error);
+        throw error;
+      }
+    },
+
+    // Token swap execution
+    async executeTokenSwap(cw20TokenAddress: string, poolContractAddress: string, amount: string) {
+      if (!this.currentAddress) {
+        throw new Error('No wallet address available');
+      }
+
+      // The msg should be base64 encoded empty object for basic swap
+      const msgBase64 = btoa('{}'); // "e30=" - base64 encoded "{}"
+      
+      const execution = {
+        send: {
+          contract: poolContractAddress,
+          amount: amount,
+          msg: msgBase64
+        }
+      };
+
+      // Return the execution object for use with the transaction dialog
+      return {
+        contract: cw20TokenAddress,
+        execution: execution
+      };
+    },
+
+    // Direct token swap execution (bypasses dialog completely)
+    async executeTokenSwapDirect(cw20TokenAddress: string, poolContractAddress: string, amount: string) {
+      if (!this.currentAddress) {
+        throw new Error('No wallet address available');
+      }
+
+      try {
+        // Get the chain ID using multiple fallbacks (same as getWalletPublicKeyFromWallet)
+        const baseStore = useBaseStore();
+        
+        const chainIdFromBlockchain = this.blockchain.current?.chainId;
+        const chainIdFromBaseStore = baseStore.currentChainId;
+        const chainIdFromLatestBlock = baseStore.latest?.block?.header?.chain_id;
+        
+        console.log('🔍 Chain ID resolution:', {
+          chainIdFromBlockchain,
+          chainIdFromBaseStore,
+          chainIdFromLatestBlock,
+          hasLatestBlock: !!baseStore.latest?.block
+        });
+        
+        // Use the first available chain ID
+        let chainId = chainIdFromBaseStore || chainIdFromLatestBlock || chainIdFromBlockchain;
+        
+        if (!chainId) {
+          // Try to initialize baseStore if it's empty
+          if (!baseStore.latest?.block) {
+            try {
+              await baseStore.initial();
+              chainId = baseStore.currentChainId || baseStore.latest?.block?.header?.chain_id;
+            } catch (initError) {
+              console.error('Failed to initialize base store:', initError);
+            }
+          }
+          
+          if (!chainId) {
+            throw new Error('Chain ID not available - please ensure the blockchain is connected');
+          }
+        }
+        
+        console.log('✅ Using chain ID:', chainId);
+
+        // Get the current connected wallet type
+        const walletType = this.connectedWallet?.wallet;
+        if (!walletType) {
+          throw new Error('No wallet connected');
+        }
+
+        console.log('🔌 Using connected wallet:', walletType);
+
+        // Get wallet interface and offline signer based on connected wallet type
+        let offlineSigner;
+        switch (walletType) {
+          case 'keplr':
+            if (!window.keplr) {
+              throw new Error('Keplr wallet not found. Please install Keplr extension.');
+            }
+            // Hint Keplr not to override provided fee/memo
+            try {
+              if (window.keplr && typeof window.keplr === 'object') {
+                (window.keplr as any).defaultOptions = {
+                  sign: { preferNoSetFee: true, preferNoSetMemo: true },
+                };
+              }
+            } catch {}
+            await window.keplr.enable(chainId);
+            offlineSigner = window.keplr.getOfflineSigner(chainId);
+            break;
+
+          case 'leap':
+            if (!window.leap) {
+              throw new Error('Leap wallet not found. Please install Leap extension.');
+            }
+            // Hint Leap not to override provided fee/memo (Leap follows Keplr API)
+            try {
+              if ((window.leap && typeof window.leap === 'object')) {
+                (window.leap as any).defaultOptions = {
+                  sign: { preferNoSetFee: true, preferNoSetMemo: true },
+                };
+              }
+            } catch {}
+            await (window.leap as any).enable(chainId);
+            offlineSigner = (window.leap as any).getOfflineSigner(chainId);
+            break;
+
+          default:
+            throw new Error(`Wallet type "${walletType}" is not supported for direct transactions. Please use a supported wallet (Keplr, Leap).`);
+        }
+        
+        // Get the accounts
+        const accounts = await offlineSigner.getAccounts();
+        if (accounts.length === 0) {
+          throw new Error('No accounts found in wallet');
+        }
+
+        // Import signing client
+        
+        
+        // Get RPC endpoint
+        const rpcEndpoint = this.blockchain.current?.endpoints?.rpc?.[0]?.address + '/';
+        if (!rpcEndpoint) {
+          throw new Error('No RPC endpoint available');
+        }
+
+        // Create signing client with better error handling
+        let signingClient;
+        try {
+          // Add timeout to RPC connection
+          const rpcClient = await Promise.race([
+            Tendermint37Client.connect(rpcEndpoint),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('RPC connection timeout')), 10000)
+            )
+          ]);
+          
+          signingClient = await SigningCosmWasmClient.createWithSigner(
+            rpcClient as any,
+            offlineSigner,
+            { gasPrice: undefined }
+          );
+          console.log('✅ Successfully connected to RPC endpoint');
+        } catch (rpcError) {
+          console.error('RPC connection failed:', rpcError);
+          console.error('RPC error details:', {
+            message: rpcError instanceof Error ? rpcError.message : 'Unknown error',
+            stack: rpcError instanceof Error ? rpcError.stack : undefined,
+            endpoint: rpcEndpoint
+          });
+        }
+
+        // The msg should be base64 encoded empty object for basic swap
+        const msgBase64 = btoa('{}'); // "e30=" - base64 encoded "{}"
+        
+        const executeMsg = {
+          send: {
+            contract: poolContractAddress,
+            amount: amount,
+            msg: msgBase64
+          }
+        };
+
+        console.log('Executing direct swap transaction:', {
+          contract: cw20TokenAddress,
+          executeMsg: executeMsg,
+          chainId: chainId,
+          sender: this.currentAddress
+        });
+
+        // Use zero-fee to rely on ante handler exemption
+        const gasLimit = '500000'; // Standard gas limit for contract execution
+        const fee = {
+          amount: [],
+          gas: gasLimit,
+        } as any;
+        
+        console.log('💰 Using zero-fee for swap (ante handler expected to exempt):', {
+          gasLimit,
+          fee
+        });
+
+        // Ensure signing client was created successfully
+        if (!signingClient) {
+          throw new Error('Failed to initialize signing client');
+        }
+
+        // Build MsgExecuteContract and broadcast without log parsing
+        const msg: MsgExecuteContractEncodeObject = {
+          typeUrl: '/cosmwasm.wasm.v1.MsgExecuteContract',
+          value: {
+            sender: this.currentAddress,
+            contract: cw20TokenAddress,
+            msg: toUtf8(JSON.stringify(executeMsg)),
+            funds: [],
+          },
+        };
+
+        let result: any;
+        try {
+          result = await Promise.race([
+            signingClient.signAndBroadcast(this.currentAddress, [msg], fee),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Transaction execution timeout')), 30000)
+            ),
+          ]);
+
+          return {
+            transactionHash: result.transactionHash,
+            height: result.height,
+            gasUsed: result.gasUsed,
+            gasWanted: result.gasWanted,
+            success: result.code === 0,
+            rawLog: result.rawLog,
+          };
+        } catch (executeError) {
+          console.error('Error executing direct swap (signAndBroadcast):', executeError);
+          console.error('Execute error details:', {
+            message: executeError instanceof Error ? executeError.message : 'Unknown error',
+            stack: executeError instanceof Error ? executeError.stack : undefined,
+            contract: cw20TokenAddress,
+            sender: this.currentAddress,
+            fee: fee,
+          });
+          throw executeError;
+        }
+        
+
+
+      } catch (error) {
+        console.error('Error executing direct swap:', error);
         throw error;
       }
     },

@@ -11,6 +11,7 @@ import CardStatisticsVertical from '@/components/CardStatisticsVertical.vue';
 import { ref, computed, watch, onMounted } from 'vue';
 import { useWalletStore, useBaseStore, useBlockchain } from '@/stores';
 import ConnectWallet from '@/components/ConnectWallet.vue';
+import LiquidityPoolWidget from '@/components/LiquidityPoolWidget.vue';
 import { useQRCode } from '@vueuse/integrations/useQRCode';
 
 const props = defineProps(['chain']);
@@ -157,16 +158,6 @@ const tipMsg = computed(() => {
   return showCopyToast.value === 2
     ? { class: 'error', msg: 'Copy Error!' }
     : { class: 'success', msg: 'Copy Success!' };
-});
-
-// Chain parameters for wallet connection
-const params = computed(() => {
-  if (blockchain.chainName == 'side') {
-    return JSON.stringify({
-      wallet: ['okex', 'unisat'],
-   });
-  }
-  return "";
 });
 
 // From index.vue for account control
@@ -346,7 +337,7 @@ function openConnectWallet() {
   </div>
 
   <!-- Second Row: Three Widgets -->
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
       <!-- Connect Wallet Widget -->
       <div class="bg-base-100 rounded shadow">
           <div class="px-4 pt-4 pb-2 text-lg font-semibold text-main">
@@ -400,6 +391,8 @@ function openConnectWallet() {
           </div>
       </div>
 
+      <!-- Liquidity Pool Widget -->
+      <LiquidityPoolWidget :chain="chain" />
 
       <!-- Use Gonka API Widget -->
       <div class="bg-base-100 rounded shadow">
@@ -523,12 +516,11 @@ function openConnectWallet() {
   <Teleport to="body">
       <ConnectWallet 
           ref="connectWalletRef"
-          :chain-id="baseStore.currentChainId || 'cosmoshub-4'" 
+          :chain-id="baseStore.currentChainId" 
           :hd-path="blockchain.defaultHDPath"
-          :addr-prefix="blockchain.current?.bech32Prefix || 'cosmos'" 
+          :addr-prefix="blockchain.current?.bech32Prefix" 
           @connect="walletStateChange"
-          @keplr-config="walletStore.suggestChain()"  
-          :params="params" 
+          @keplr-config="walletStore.suggestChain()"
       />
   </Teleport>
 </div>

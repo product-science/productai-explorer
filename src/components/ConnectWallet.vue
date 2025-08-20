@@ -15,6 +15,8 @@ declare global {
     };
     cosmos?: any;
     cosmsnap?: any;
+    okex?: any;
+    unisat?: any;
   }
 }
 
@@ -41,22 +43,46 @@ const metamaskSnapInstalled = ref(false);
 
 // Parse wallet params if provided
 const walletOptions = computed(() => {
-  // Always return Keplr, Leap, and MetaMask, ignoring params
-  //return ['keplr', 'leap', 'metamask'];
+  // Parse params if provided
+  if (props.params) {
+    try {
+      const parsedParams = JSON.parse(props.params);
+      if (parsedParams.wallet && Array.isArray(parsedParams.wallet)) {
+        return parsedParams.wallet;
+      }
+    } catch (e) {
+      console.warn('Failed to parse wallet params:', e);
+    }
+  }
+  
+  // Default wallets if no params or parsing failed
   return ['keplr', 'leap'];
 });
 
 // Check if wallet is available
 const isWalletAvailable = (wallet: string) => {
-  switch (wallet) {
-    case 'keplr':
-      return !!window.keplr;
-    case 'leap':
-      return !!window.leap;
-    case 'metamask':
-      return !!window.ethereum;
-    default:
-      return false;
+  try {
+    switch (wallet) {
+      case 'keplr':
+        // Check if keplr exists and has the required methods, and is the real Keplr wallet
+        return !!(window.keplr && 
+          typeof (window.keplr as any).enable === 'function' && 
+          typeof (window.keplr as any).getOfflineSigner === 'function' &&
+          (window.keplr as any).ethereum?.isKeplr);
+      case 'leap':
+        // Check if leap exists and has the required methods
+        return !!(window.leap && 
+          typeof (window.leap as any).enable === 'function' && 
+          typeof (window.leap as any).getOfflineSigner === 'function' &&
+          (window.leap as any).ethereum?.isLeap);
+      case 'metamask':
+        return !!window.ethereum;
+      default:
+        return false;
+    }
+  } catch (error) {
+    console.warn(`Error checking wallet availability for ${wallet}:`, error);
+    return false;
   }
 };
 
@@ -364,10 +390,10 @@ async function suggestChain(wallet: string) {
     
     if (wallet === 'keplr') {
       if (!window.keplr) throw new Error('Keplr wallet not found');
-      await window.keplr.experimentalSuggestChain(config);
+      await (window.keplr as any).experimentalSuggestChain(config);
     } else if (wallet === 'leap') {
       if (!window.leap) throw new Error('Leap wallet not found');
-      await window.leap.experimentalSuggestChain(config);
+      await (window.leap as any).experimentalSuggestChain(config);
     }
     
     return true;
@@ -383,11 +409,11 @@ async function checkChainExists(wallet: string): Promise<boolean> {
   try {
     if (wallet === 'keplr') {
       if (!window.keplr) throw new Error('Keplr wallet not found');
-      const chainInfo = await window.keplr.getChainInfo(props.chainId);
+      const chainInfo = await (window.keplr as any).getChainInfo(props.chainId);
       return !!chainInfo;
     } else if (wallet === 'leap') {
       if (!window.leap) throw new Error('Leap wallet not found');
-      const chainInfo = await window.leap.getChainInfo(props.chainId);
+      const chainInfo = await (window.leap as any).getChainInfo(props.chainId);
       return !!chainInfo;
     }
     return false;
@@ -423,8 +449,8 @@ async function connectWallet(wallet: string) {
           }
         }
         
-        await window.keplr.enable(props.chainId);
-        const offlineSigner = window.keplr.getOfflineSigner(props.chainId);
+        await (window.keplr as any).enable(props.chainId);
+        const offlineSigner = (window.keplr as any).getOfflineSigner(props.chainId);
         const accounts = await offlineSigner.getAccounts();
         emit('connect', {
           detail: {
@@ -451,8 +477,8 @@ async function connectWallet(wallet: string) {
           }
         }
         
-        await window.leap.enable(props.chainId);
-        const leapSigner = window.leap.getOfflineSigner(props.chainId);
+        await (window.leap as any).enable(props.chainId);
+        const leapSigner = (window.leap as any).getOfflineSigner(props.chainId);
         const leapAccounts = await leapSigner.getAccounts();
         emit('connect', {
           detail: {
