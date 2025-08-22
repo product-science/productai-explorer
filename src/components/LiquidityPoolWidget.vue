@@ -29,6 +29,15 @@ const selectedWrappedToken = ref<string>('USDT');
 // Computed
 const walletAddress = computed(() => walletStore.currentAddress);
 const isConnected = computed(() => !!walletAddress.value);
+const shouldShowWidget = computed(() => {
+  // Don't show widget if there's an error or no pool info
+  if (error.value || !poolInfo.value) return false;
+  
+  // Don't show widget if pool info is empty or missing required data
+  if (!poolInfo.value.address || !poolInfo.value.address.trim()) return false;
+  
+  return true;
+});
 const usdtBalance = computed(() => {
   const usdtToken = wrappedTokenBalances.value.find(
     token => token.symbol === 'USDT'
@@ -220,7 +229,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="bg-base-100 rounded shadow">
+  <div v-if="shouldShowWidget" class="bg-base-100 rounded shadow">
     <div class="px-4 pt-4 pb-2 text-lg font-semibold text-main">
       {{ $t('developer.liquidity_pool') }}
     </div>

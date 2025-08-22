@@ -41,7 +41,7 @@ const throughput = computed(() => validatorStore.displayTotalPower);
 // QR code for wallet address - fixed implementation
 const qrCodeSource = ref('');
 const qrcode = useQRCode(qrCodeSource, {
-  logo: '/public/logos/gonka-testnet/logo-small.png',
+  logo: '/public/logos/gonka-mainnet/logo-small.svg',
   logoOptions: {
     width: 40,
     height: 40,
