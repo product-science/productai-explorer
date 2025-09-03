@@ -170,19 +170,27 @@ function apiConverter(api: any[]) {
 export function fromLocal(lc: LocalConfig): ChainConfig {
   const conf = {} as ChainConfig;
   if(lc.assets && Array.isArray(lc.assets)) {
-    conf.assets = lc.assets.map((x) => ({
-      name: x.base,
-      base: x.base,
-      display: x.symbol,
-      symbol: x.symbol,
-      logo_URIs: { svg: x.logo },
-      coingecko_id: x.coingecko_id,
-      exponent: x.exponent,
-      denom_units: [
-        { denom: x.base, exponent: 0 },
-        { denom: x.symbol.toLowerCase(), exponent: Number(x.exponent) },
-      ],
-    }));
+    const first: any = lc.assets[0] as any;
+    // If local config already uses chain-registry style assets, keep them as-is
+    if(first && first.denom_units) {
+      // @ts-ignore - accept chain-registry Asset shape directly
+      conf.assets = lc.assets as unknown as Asset[];
+    } else {
+      // Backward compatibility: map simplified local asset shape
+      conf.assets = lc.assets.map((x) => ({
+        name: x.base,
+        base: x.base,
+        display: x.symbol,
+        symbol: x.symbol,
+        logo_URIs: { svg: x.logo },
+        coingecko_id: x.coingecko_id,
+        exponent: x.exponent,
+        denom_units: [
+          { denom: x.base, exponent: 0 },
+          { denom: x.symbol.toLowerCase(), exponent: Number(x.exponent) },
+        ],
+      }));
+    }
   }
   conf.versions = {
     cosmosSdk: lc.sdk_version

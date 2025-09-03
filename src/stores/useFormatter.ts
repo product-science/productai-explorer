@@ -271,7 +271,7 @@ export const useFormatter = defineStore('formatter', {
           });
           if (unit && unit.exponent > 0) {
             amount = amount / Math.pow(10, unit.exponent || 6);
-            denom = unit.denom.toUpperCase();
+            denom = unit.denom; // keep display denom as defined (e.g., 'gonka')
           }
         }
         if(amount < 0.000001) {

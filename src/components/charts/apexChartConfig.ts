@@ -267,20 +267,14 @@ export const getDonutChartConfig = (
   theme: string,
   labels: string[]
 ) => {
-
   const { themeSecondaryTextColor, themePrimaryTextColor } =
     colorVariables(theme);
 
-  return {
+  const base: any = {
+    tooltip: { enabled: false },
     stroke: { width: 0 },
     labels,
     colors: donutColors,
-    // colors: [
-    //   donutColors.series1,
-    //   donutColors.series5,
-    //   donutColors.series3,
-    //   donutColors.series2,
-    // ],
     dataLabels: {
       enabled: true,
       formatter: (val: string) => `${parseInt(val, 10)}%`,
@@ -296,6 +290,7 @@ export const getDonutChartConfig = (
     },
     plotOptions: {
       pie: {
+        expandOnClick: false,
         donut: {
           labels: {
             show: true,
@@ -305,14 +300,16 @@ export const getDonutChartConfig = (
             value: {
               fontSize: '1.5rem',
               color: themeSecondaryTextColor,
-              formatter: (val: string) => `${parseInt(val, 10)}`,
+              formatter: (val: string) => numeral(val).format('0,0.[00]'),
             },
             total: {
-              show: false,
+              show: true,
               fontSize: '1.5rem',
-              // label: 'Operational',
-              // formatter: () => '31%',
               color: themePrimaryTextColor,
+              label: 'Total',
+              formatter: (w: any) => numeral(
+                (w?.globals?.seriesTotals || []).reduce((a: number, b: number) => a + b, 0)
+              ).format('0,0.[00]'),
             },
           },
         },
@@ -357,6 +354,7 @@ export const getDonutChartConfig = (
         },
       },
     ],
-  };
+  }
+  base['states'] = { normal: { filter: { type: 'none' } }, hover: { filter: { type: 'none' } }, active: { filter: { type: 'none' } } }
+  return base
 };
-

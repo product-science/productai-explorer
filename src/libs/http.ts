@@ -12,22 +12,6 @@ export async function fetchData<T>(
   return adapter(data);
 }
 
-// Usage:
-/*
-const userAdapter = (source: any): User => {
-  return {
-    id: source.id,
-    name: source.name,
-    email: source.email,
-  };
-};
-try {
-  const userData = await fetchData<User>("https://jsonplaceholder.typicode.com/users/1", userAdapter);
-  console.log(userData); // Output: { id: 1, name: "Leanne Graham", email: "Sincere@april.biz" }
-} catch (error) {
-  console.error(error.message);
-}
-// */
 export async function get(url: string) {
   const response = await fetch(url, {referrerPolicy: 'origin-when-cross-origin'});
   

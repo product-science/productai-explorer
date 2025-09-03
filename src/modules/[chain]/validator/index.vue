@@ -10,6 +10,7 @@ import {
 import { computed } from '@vue/reactivity';
 import { onMounted, ref } from 'vue';
 import { Icon } from '@iconify/vue';
+import Countdown from '@/components/Countdown.vue';
 import { fromHex, toBase64 } from '@cosmjs/encoding';
 import type { Key, SlashingParam, Validator } from '@/types';
 import type { SigningInfo } from '@/types';
@@ -31,6 +32,43 @@ const yesterday = ref({} as Record<string, number>);
 const tab = ref('active');
 const unbondList = ref([] as Validator[]);
 const slashing = ref({} as SlashingParam)
+
+// Next PoC mini widget state - now using store
+const currentHeight = computed(() => Number(base.latest?.block?.header?.height || 0))
+const pocRemainingBlocks = computed(() => {
+    if (!chainStore.nextPocStart) return 0
+    return Math.max(0, Number(chainStore.nextPocStart) - currentHeight.value)
+})
+const pocEstimateMs = computed(() => {
+    const ms = Number(pocRemainingBlocks.value * (base.blocktime || 0))
+    return ms > 0 ? ms : 0
+})
+const pocRemainingBlocksDisplay = computed(() => pocRemainingBlocks.value.toString())
+
+// Sorting state
+const sortBy = ref<'rank' | 'validator' | 'voting_power' | 'change24' | 'earned' | 'active' | 'reputation' | 'missed' | 'uptime'>(
+  (localStorage.getItem('validator-sort-by') as any) || 'rank'
+)
+const sortDesc = ref(localStorage.getItem('validator-sort-desc') === 'true')
+
+function toggleSort(key: typeof sortBy.value) {
+    if (sortBy.value === key) {
+        sortDesc.value = !sortDesc.value
+    } else {
+        sortBy.value = key
+        // Default sort direction per column
+        sortDesc.value = key !== 'validator' // strings asc by default, numbers desc
+    }
+    
+    // Save sort state to localStorage
+    localStorage.setItem('validator-sort-by', sortBy.value)
+    localStorage.setItem('validator-sort-desc', sortDesc.value.toString())
+}
+
+function sortIcon(key: typeof sortBy.value) {
+    if (sortBy.value !== key) return 'mdi:chevron-up'
+    return sortDesc.value ? 'mdi:chevron-down' : 'mdi:chevron-up'
+}
 
 // Uptime and slashing state
 const signingInfo = ref({} as Record<string, SigningInfo>);
@@ -120,30 +158,29 @@ onMounted(() => {
     
     // Fetch initial slashing signing info
     updateSlashingSigningInfo();
+
+    // Fetch latest epoch info for Next PoC widget
+    chainStore.fetchLatestEpochInfo();
 });
 
-async function fetchChange(blockWindow: number = 14400) {
+async function fetchVotingPowerChange(blockWindow: number = 14400) {
   let page = 0;
 
   let height = Number(base.latest?.block?.header?.height || 0);
-  console.log(`[fetchChange] Current block height: ${height}`);
 
   if (height > blockWindow) {
     height -= blockWindow;
   } else {
     height = 1;
   }
-  console.log(`[fetchChange] Historical block height (24h ago): ${height}`);
 
   // voting power 24h ago
   while (page < validatorStore.validators.length && height > 0) {
-    console.log(`[fetchChange] Fetching validators at height ${height}, page ${page}`);
     await base.fetchValidatorByHeight(height, page).then((x) => {
       x.validators.forEach((v) => {
         const power = Number(v.voting_power);
         const key = v.pub_key.key;
         yesterday.value[key] = power;
-        console.log(`[24h ago] pub_key=${key}, voting_power=${power}`);
       });
     });
     page += 100;
@@ -153,29 +190,18 @@ async function fetchChange(blockWindow: number = 14400) {
 
   // voting power now
   while (page < validatorStore.validators.length) {
-    console.log(`[fetchChange] Fetching latest validators, page ${page}`);
     await base.fetchLatestValidators(page).then((x) => {
       x.validators.forEach((v) => {
         const power = Number(v.voting_power);
         const key = v.pub_key.key;
         latest.value[key] = power;
-        console.log(`[NOW] pub_key=${key}, voting_power=${power}`);
       });
     });
     page += 100;
   }
-
-  // Final diff
-  console.log(`[fetchChange] -------- Voting Power Change Summary --------`);
-  Object.keys(latest.value).forEach((key) => {
-    const current = latest.value[key] ?? 0;
-    const prev = yesterday.value[key] ?? 0;
-    const diff = current - prev;
-    console.log(`pub_key=${key}, current=${current}, 24h_ago=${prev}, change=${diff}`);
-  });
 }
 
-const changes = computed(() => {
+const votingPowerChanges = computed(() => {
     const changes = {} as Record<string, number>;
     Object.keys(latest.value).forEach((k) => {
         const l = latest.value[k] || 0;
@@ -185,35 +211,22 @@ const changes = computed(() => {
     return changes;
 });
 
-const change24 = (entry: { consensus_pubkey: Key; tokens: string }) => {
+const votingPowerChange24 = (entry: { consensus_pubkey: Key; }) => {
     const txt = entry.consensus_pubkey.key;
-    // const n: number = latest.value[txt];
-    // const o: number = yesterday.value[txt];
-    // // console.log( txt, n, o)
-    // return n > 0 && o > 0 ? n - o : 0;
-
-    const latestValue = latest.value[txt];
-    if (!latestValue) {
-        return 0;
-    }
-
-    const displayTokens = format.tokenAmountNumber({
-        amount: parseInt(entry.tokens, 10).toString(),
-        denom: validatorStore.params.bond_denom,
-    });
-    const coefficient = displayTokens / latestValue;
-    return changes.value[txt] * coefficient;
+    // Show raw voting power change from validatorset snapshots
+    const diff = votingPowerChanges.value[txt];
+    return typeof diff === 'number' ? diff : 0;
 };
 
-const change24Text = (entry: { consensus_pubkey: Key; tokens: string }) => {
+const votingPowerChange24Text = (entry: { consensus_pubkey: Key; }) => {
     if (!entry) return '';
-    const v = change24(entry);
+    const v = votingPowerChange24(entry);
     return v && v !== 0 ? format.showChanges(v) : '';
 };
 
-const change24Color = (entry: { consensus_pubkey: Key; tokens: string }) => {
+const votingPowerChange24Color = (entry: { consensus_pubkey: Key; }) => {
     if (!entry) return '';
-    const v = change24(entry);
+    const v = votingPowerChange24(entry);
     if (v > 0) return 'text-success';
     if (v < 0) return 'text-error';
 };
@@ -241,20 +254,58 @@ function isFeatured(endpoints: string[], who?: {website?: string, moniker: strin
 }
 
 const list = computed(() => {
+    let base: { v: any; rank: string; logo: string; pos: number }[] = []
     if (tab.value === 'active') {
-        return validatorStore.validators.map((x, i) => ({v: x, rank: calculateRank(i), logo: logo(x.description.identity)}));
+        base = validatorStore.validators.map((x, i) => ({ v: x, rank: calculateRank(i), logo: logo(x.description.identity), pos: i }))
     } else if (tab.value === 'featured') {
         const endpoint = chainStore.current?.endpoints?.rest?.map(x => x.provider)
-        if(endpoint) {
+        if (endpoint) {
             endpoint.push('ping')
-            return validatorStore.validators
+            base = validatorStore.validators
                 .filter(x => isFeatured(endpoint, x.description))
-                .map((x, i) => ({v: x, rank: 'primary', logo: logo(x.description.identity)}));
+                .map((x) => ({ v: x, rank: 'primary', logo: logo(x.description.identity), pos: validatorStore.validators.findIndex(v => v.operator_address === x.operator_address) }))
         }
-        return []        
+    } else {
+        base = unbondList.value.map((x, i) => ({ v: x, rank: 'primary', logo: logo(x.description.identity), pos: i }))
     }
-    return unbondList.value.map((x, i) => ({v: x, rank: 'primary', logo: logo(x.description.identity)}));
-});
+
+    // Rank preserves original ordering
+    if (sortBy.value === 'rank') return base
+
+    const getValue = (entry: { v: any }) => {
+        const val = entry.v
+        switch (sortBy.value) {
+            case 'validator':
+                return String(val.description?.moniker || '').toLowerCase()
+            case 'voting_power':
+                return Number(val.tokens || 0)
+            case 'change24':
+                return Number(votingPowerChange24(val) || 0)
+            case 'earned':
+                return Number(validatorStore.getEarnedCoins(val.operator_address) || 0)
+            case 'active':
+                return Number(validatorStore.getEpochsCompleted(val.operator_address) || 0)
+            case 'reputation':
+                return Number(validatorStore.getReputation(val.operator_address) || 0)
+            case 'missed':
+                return Number(getMissedBlocksCounter(val.operator_address) || 0)
+            case 'uptime':
+                return Number(getUptimePercentage(val.operator_address) || 0)
+        }
+    }
+
+    return [...base].sort((a, b) => {
+        const va = getValue(a)
+        const vb = getValue(b)
+        let cmp = 0
+        if (typeof va === 'string' && typeof vb === 'string') {
+            cmp = va.localeCompare(vb)
+        } else {
+            cmp = Number(va) - Number(vb)
+        }
+        return sortDesc.value ? -cmp : cmp
+    })
+})
 
 const fetchAvatar = (identity: string) => {
   // fetch avatar from keybase
@@ -314,12 +365,11 @@ const logo = (identity?: string) => {
 
 const loaded = ref(false);
 base.$subscribe((_, s) => {
-    if (s.recents.length >= 2 && loaded.value === false) {
-        loaded.value = true;
+    if (s.recents.length >= 2 && loaded.value === false && validatorStore.validators.length > 0) {
         const diff_time = Date.parse(s.recents[1].block.header.time) - Date.parse(s.recents[0].block.header.time)
         const diff_height = Number(s.recents[1].block.header.height) - Number(s.recents[0].block.header.height)
         const block_window = Number(Number(86400 * 1000 * diff_height / diff_time).toFixed(0))
-        fetchChange(block_window);
+        fetchVotingPowerChange(block_window).finally(() => { loaded.value = true })
     }
     
     // Update slashing signing info every 7 blocks (similar to uptime module)
@@ -333,7 +383,25 @@ loadAvatars();
 </script>
 <template>
 <div>
-  <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 mt-4">
+  <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5 mt-4">
+    <!-- Next PoC mini widget -->
+    <div class="bg-base-100 shadow rounded p-4">
+      <div class="flex items-center justify-center">
+        <div class="relative w-9 h-9 rounded overflow-hidden flex items-center justify-center">
+          <Icon class="text-primary" icon="mdi:flag-checkered" size="32" />
+          <div class="absolute top-0 left-0 bottom-0 right-0 opacity-20 bg-primary"></div>
+        </div>
+      </div>
+      <div class="mt-2">
+        <div class="flex items-center justify-center text-sm mt-2 mb-1">
+          <template v-if="pocEstimateMs > 0">
+            <Countdown :time="pocEstimateMs" css="!text-base" :hideDays="true" :short="true" />
+          </template>
+          <template v-else>—</template>
+        </div>
+        <p class="text-sm text-center">Next PoC</p>
+      </div>
+    </div>
     <CardStatisticsVertical
       :title="$t('validator.total_power')"
       icon="mdi:lightning-bolt"
@@ -371,24 +439,41 @@ loadAvatars();
             <tr>
               <th
                 scope="col"
-                class="uppercase"
+                class="uppercase cursor-pointer select-none"
                 style="width: 3rem; position: relative"
+                @click="toggleSort('rank')"
               >
-              {{ $t('validator.rank') }}    
+                <span class="inline-flex items-center">{{ $t('validator.rank') }}<Icon :icon="sortIcon('rank')" class="ml-1" /></span>
               </th>
-              <th scope="col" class="uppercase">{{ $t('validator.validator') }}</th>
-              <th scope="col" class="text-right uppercase">{{ $t('validator.voting_power') }}</th>
-              <th scope="col" class="text-right uppercase">{{ $t('validator.24h_changes') }}</th>
-              <th scope="col" class="text-right uppercase">{{ $t('validator.earned') }}</th>
-              <th scope="col" class="text-right uppercase">{{ $t('validator.active') }}</th>
-              <th scope="col" class="text-right uppercase">{{ $t('validator.reputation') }}</th>
-              <th scope="col" class="text-right uppercase">{{ $t('validator.missed_blocks') }}</th>
-              <th scope="col" class="text-right uppercase">{{ $t('validator.uptime') }}</th>
+              <th scope="col" class="uppercase cursor-pointer select-none" @click="toggleSort('validator')">
+                <span class="inline-flex items-center">{{ $t('validator.validator') }}<Icon :icon="sortIcon('validator')" class="ml-1" /></span>
+              </th>
+              <th scope="col" class="text-right uppercase cursor-pointer select-none" @click="toggleSort('voting_power')">
+                <span class="inline-flex items-center justify-end w-full">{{ $t('validator.voting_power') }}<Icon :icon="sortIcon('voting_power')" class="ml-1" /></span>
+              </th>
+              <th scope="col" class="text-right uppercase cursor-pointer select-none" @click="toggleSort('change24')">
+                <span class="inline-flex items-center justify-end w-full">{{ $t('validator.24h_changes') }}<Icon :icon="sortIcon('change24')" class="ml-1" /></span>
+              </th>
+              <th scope="col" class="text-right uppercase cursor-pointer select-none" @click="toggleSort('earned')">
+                <span class="inline-flex items-center justify-end w-full">{{ $t('validator.earned') }}<Icon :icon="sortIcon('earned')" class="ml-1" /></span>
+              </th>
+              <th scope="col" class="text-right uppercase cursor-pointer select-none" @click="toggleSort('active')">
+                <span class="inline-flex items-center justify-end w-full">{{ $t('validator.active') }}<Icon :icon="sortIcon('active')" class="ml-1" /></span>
+              </th>
+              <th scope="col" class="text-right uppercase cursor-pointer select-none" @click="toggleSort('reputation')">
+                <span class="inline-flex items-center justify-end w-full">{{ $t('validator.reputation') }}<Icon :icon="sortIcon('reputation')" class="ml-1" /></span>
+              </th>
+              <th scope="col" class="text-right uppercase cursor-pointer select-none" @click="toggleSort('missed')">
+                <span class="inline-flex items-center justify-end w-full">{{ $t('validator.missed_blocks') }}<Icon :icon="sortIcon('missed')" class="ml-1" /></span>
+              </th>
+              <th scope="col" class="text-right uppercase cursor-pointer select-none" @click="toggleSort('uptime')">
+                <span class="inline-flex items-center justify-end w-full">{{ $t('validator.uptime') }}<Icon :icon="sortIcon('uptime')" class="ml-1" /></span>
+              </th>
             </tr>
           </thead>
           <tbody>
             <tr
-              v-for="({v, rank, logo}, i) in list"
+              v-for="({v, rank, logo, pos}, i) in list"
               :key="v.operator_address"
               class="hover:bg-gray-100 dark:hover:bg-[#384059]"
             >
@@ -402,7 +487,7 @@ loadAvatars();
                     class="inset-x-0 inset-y-0 opacity-10 absolute"
                     :class="`bg-${rank}`"
                   ></span>
-                  {{ i + 1 }}
+                  {{ pos + 1 }}
                 </div>
               </td>
               <!-- 👉 Validator -->
@@ -491,16 +576,16 @@ loadAvatars();
               <!-- 👉 24h Changes -->
               <td
                 class="text-right text-xs"
-                :class="change24Color(v)"
+                :class="votingPowerChange24Color(v)"
               >
-                {{ change24Text(v) }}
+                {{ votingPowerChange24Text(v) }}
               </td>
               <!-- 👉 Earned -->
               <td class="text-right text-xs">
                 {{ format.formatToken({
                   amount: validatorStore.getEarnedCoins(v.operator_address), 
-                  denom: validatorStore.params.bond_denom
-                }, false, '0,0.[00]') }}
+                  denom: 'ngonka'
+                }, true, '0,0.[00]') }}
               </td>
               <!-- 👉 Active -->
               <td class="text-right text-xs">

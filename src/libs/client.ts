@@ -119,6 +119,12 @@ export class CosmosRestClient extends BaseRestClient<RequestRegistry> {
       delegator_addr,
     });
   }
+  async getDistributionWithdrawAddress(delegator_addr: string) {
+    return this.request(this.registry.distribution_delegator_withdraw_address, { delegator_addr });
+  }
+  async getDistributionDelegatorValidators(delegator_addr: string) {
+    return this.request(this.registry.distribution_delegator_validators, { delegator_addr });
+  }
   async getDistributionValidatorCommission(validator_address: string) {
     return this.request(this.registry.distribution_validator_commission, {
       validator_address,
@@ -285,7 +291,6 @@ export class CosmosRestClient extends BaseRestClient<RequestRegistry> {
   // tx
   async getTxsBySender(sender: string, page?: PageRequest) {
     if(!page) page = new PageRequest()
-
     let query = `?events=message.sender='${sender}'&pagination.limit=${page.limit}&pagination.offset=${page.offset||0}`;
     if (semver.gte(this.version.replaceAll('v', ''), '0.50.0')) {
       query = `?query=message.sender='${sender}'&pagination.limit=${page.limit}&pagination.offset=${page.offset||0}`;
@@ -310,6 +315,94 @@ export class CosmosRestClient extends BaseRestClient<RequestRegistry> {
   }
   async getTx(hash: string) {
     return this.request(this.registry.tx_hash, { hash });
+  }
+
+  // Find successful reward withdrawals by this delegator (distribution module)
+  async getTxsDistributionWithdrawalsByDelegator(addr: string, limit = 50, offset = 0) {
+    // Resolve withdraw address and validator set
+    let withdrawAddr = addr
+    try {
+      const wa = await this.getDistributionWithdrawAddress(addr)
+      if (wa && (wa.withdraw_address || wa.withdrawAddress)) {
+        withdrawAddr = wa.withdraw_address || wa.withdrawAddress
+      }
+    } catch (_) {}
+
+    let valopers: string[] = []
+    try {
+      const v = await this.getDistributionDelegatorValidators(addr)
+      // The response shape is { validators: string[] }
+      if (v && Array.isArray((v as any).validators)) valopers = (v as any).validators
+    } catch (_) {}
+
+    const make = (expr: string) => this.get(this.registry.tx_txs, {}, `?query=${encodeURIComponent(expr)}&pagination.limit=${limit}&pagination.offset=${offset}&pagination.reverse=true`)
+
+    const withdrawActions = [
+      `/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward`,
+      `withdraw_delegator_reward`,
+    ]
+    const stakingActions = [
+      `delegate`,
+      `begin_unbonding`,
+      `begin_redelegate`,
+    ]
+
+    const queries: string[] = []
+    // Explicit withdraw txs
+    for (const a of withdrawActions) {
+      queries.push(`message.action='${a}' AND message.sender='${addr}'`)
+      queries.push(`transfer.recipient='${withdrawAddr}' AND message.action='${a}'`)
+    }
+    // Validator-specific withdraw events (withdraw_rewards.validator)
+    for (const val of valopers) {
+      // Events doc says: withdraw_rewards validator=<valoper>
+      queries.push(`withdraw_rewards.validator='${val}' AND transfer.recipient='${withdrawAddr}'`)
+    }
+    // Implicit payouts triggered by staking msgs (credit to withdraw addr)
+    for (const a of stakingActions) {
+      queries.push(`transfer.recipient='${withdrawAddr}' AND message.module='staking' AND message.action='${a}'`)
+    }
+    // Some chains tag distribution module alongside transfer
+    queries.push(`transfer.recipient='${withdrawAddr}' AND message.module='distribution'`)
+
+    const settled = await Promise.allSettled(queries.map(q => make(q)))
+
+    const byHash: Record<string, any> = {}
+    for (const r of settled) {
+      if (r.status === 'fulfilled' && r.value && r.value.tx_responses) {
+        for (const tx of r.value.tx_responses) {
+          if (tx.code === 0) byHash[tx.txhash] = tx
+        }
+      }
+    }
+
+    const merged = Object.values(byHash)
+      .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, limit)
+
+    return { tx_responses: merged, withdraw_address_used: withdrawAddr, validators_used: valopers }
+  }
+
+  // TEST: fetch *all* MsgWithdrawDelegatorReward txs on chain (no address filtering)
+  async getTxsAllWithdrawDelegatorReward(limit = 50, offset = 0) {
+    const make = (expr: string) => this.get(this.registry.tx_txs, {}, `?query=${encodeURIComponent(expr)}&pagination.limit=${limit}&pagination.offset=${offset}&pagination.reverse=true`)
+    const actions = [
+      `/cosmos.distribution.v1beta1.MsgWithdrawDelegatorReward`, // type URL (newer)
+      `withdraw_delegator_reward`,                               // legacy action string
+    ]
+    const settled = await Promise.allSettled(actions.map(a => make(`message.action='${a}'`)))
+    const byHash: Record<string, any> = {}
+    for (const r of settled) {
+      if (r.status === 'fulfilled' && r.value && r.value.tx_responses) {
+        for (const tx of r.value.tx_responses) {
+          if (tx.code === 0) byHash[tx.txhash] = tx
+        }
+      }
+    }
+    const merged = Object.values(byHash)
+      .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, limit)
+    return { tx_responses: merged }
   }
 
   // mint

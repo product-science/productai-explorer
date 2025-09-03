@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { useBlockchain } from './useBlockchain';
+import { useBaseStore } from './useBaseStore';
+import { useFormatter } from './useFormatter';
 import type { Validator } from '@/types';
 
 export interface ParticipantStats {
@@ -13,7 +15,18 @@ export interface ParticipantStats {
   epochs_completed: number;
 }
 
+export interface VestingSchedule {
+  participant_address: string;
+  epoch_amounts: Array<{
+    coins: Array<{
+      denom: string;
+      amount: string;
+    }>;
+  }>;
+}
+
 export const useValidatorStore = defineStore('validatorStore', () => {
+  const base = useBaseStore();
   const blockchain = useBlockchain();
   
   // State
@@ -27,6 +40,8 @@ export const useValidatorStore = defineStore('validatorStore', () => {
     bond_denom: 'ugonka',
     max_validators: 100
   });
+  // Vesting schedules cache
+  const vestingSchedules = ref<Record<string, VestingSchedule>>({});
 
   // Getters
   const getValidatorStats = computed(() => {
@@ -47,7 +62,26 @@ export const useValidatorStore = defineStore('validatorStore', () => {
   const getEarnedCoins = computed(() => {
     return (validatorAddress: string) => {
       const stats = getValidatorStats.value(validatorAddress);
-      return stats.earned_coins_current_epoch || "0";
+      const baseEarned = parseFloat(stats.earned_coins_current_epoch || "0");
+      
+      // Get next vesting amount for this validator
+      const nextVesting = getNextVestingAmount(validatorAddress);
+      
+      // Calculate vesting bonus using the formula: ((nextPoC - currentHeight)/epochLength)*nextVesting
+      // This represents the proportional vesting amount based on blocks until next PoC
+      const currentHeight = Number(base.latest?.block?.header?.height || 0);
+      const nextPoC = blockchain.nextPocStart;
+      const epochLength = blockchain.epochLength;
+      
+      let vestingBonus = 0;
+      if (nextPoC && epochLength && currentHeight > 0 && nextVesting > 0) {
+        const blocksUntilNextPoC = Math.max(0, nextPoC - currentHeight);
+        const pocFinalizedPercentage = 1 - (blocksUntilNextPoC / epochLength);
+
+        vestingBonus = pocFinalizedPercentage * nextVesting;
+      }
+      
+      return (baseEarned + vestingBonus).toString();
     };
   });
 
@@ -64,6 +98,28 @@ export const useValidatorStore = defineStore('validatorStore', () => {
       return stats.reputation || 0;
     };
   });
+
+  // Get next vesting amount for a validator
+  function getNextVestingAmount(validatorAddress: string): number {
+    const stats = getValidatorStats.value(validatorAddress);
+    // Check if stats has account_address (it's a real participant, not fallback)
+    if (!stats || !('account_address' in stats) || !stats.account_address) return 0;
+    
+    const vestingSchedule = vestingSchedules.value[stats.account_address];
+    if (!vestingSchedule || !vestingSchedule.epoch_amounts || vestingSchedule.epoch_amounts.length === 0) {
+      return 0;
+    }
+    
+    // Get the first epoch amount (next vesting)
+    const firstEpoch = vestingSchedule.epoch_amounts[0];
+    if (!firstEpoch || !firstEpoch.coins || firstEpoch.coins.length === 0) {
+      return 0;
+    }
+    
+    // Find the ngonka coin amount
+    const ngonkaCoin = firstEpoch.coins.find(coin => coin.denom === 'ngonka');
+    return ngonkaCoin ? parseFloat(ngonkaCoin.amount) : 0;
+  }
 
   const getRewardedCoinsCurrentEpoch = computed(() => {
     return (validatorAddress: string) => {
@@ -111,17 +167,28 @@ export const useValidatorStore = defineStore('validatorStore', () => {
       const earned = parseFloat(participant.rewarded_coins_latest_epoch || '0');
       return sum + earned;
     }, 0);
-    return total.toString();
+    // Format with proper denom - use base denom so formatter can convert to display units
+    return useFormatter().formatToken({
+      amount: total.toString(),
+      denom: blockchain.current?.assets?.[0]?.base || 'ngonka'
+    }, true, '0,0'); // Set withDenom to true to show denomination
   });
 
   const displayTotalEarnedReward = computed(() => {
     if (loading.value) return '...';
     if (error.value) return 'Error';
-    const total = participantsStats.value.reduce((sum, participant) => {
-      const earned = parseFloat(participant.earned_coins_current_epoch || '0');
-      return sum + earned;
+    
+    // Calculate total earned including vesting bonuses for all validators
+    const total = validators.value.reduce((sum, validator) => {
+      const earnedCoins = getEarnedCoins.value(validator.operator_address);
+      return sum + parseFloat(earnedCoins || '0');
     }, 0);
-    return total.toString();
+    
+    // Format with proper denom - use ngonka to match the vesting amounts
+    return useFormatter().formatToken({
+      amount: total.toString(),
+      denom: 'ngonka'
+    }, true, '0,0'); // Set withDenom to true to show denomination
   });
 
   // Actions
@@ -254,12 +321,94 @@ export const useValidatorStore = defineStore('validatorStore', () => {
     }
   }
 
+  // Fetch full participant data by account address and return the participant object
+  async function fetchParticipantByAddress(address: string) {
+    try {
+      if (!blockchain.endpoint.address) {
+        throw new Error('No blockchain endpoint configured');
+      }
+
+      const response = await fetch(`${blockchain.endpoint.address}/productscience/inference/inference/participant/${address}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data?.participant ?? null;
+    } catch (err) {
+      console.error('Error fetching participant by address:', address, err);
+      return null;
+    }
+  }
+
+  // Fetch vesting schedule for a participant
+  async function fetchVestingSchedule(address: string) {
+    try {
+      if (!blockchain.endpoint.address) {
+        throw new Error('No blockchain endpoint configured');
+      }
+
+      const response = await fetch(`${blockchain.endpoint.address}/productscience/inference/streamvesting/vesting_schedule/${address}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return data?.vesting_schedule ?? null;
+    } catch (err) {
+      console.error('Error fetching vesting schedule for address:', address, err);
+      return null;
+    }
+  }
+
+  // Fetch vesting schedules for all participants
+  async function fetchAllVestingSchedules() {
+    try {
+      const addresses = participantsStats.value
+        .map(p => p.account_address)
+        .filter((a): a is string => typeof a === 'string' && a.length > 0);
+
+      await Promise.all(addresses.map(async (addr) => {
+        const vestingSchedule = await fetchVestingSchedule(addr);
+        if (vestingSchedule) {
+          vestingSchedules.value[addr] = vestingSchedule;
+        }
+      }));
+    } catch (err) {
+      console.error('Error fetching all vesting schedules:', err);
+    }
+  }
+
+  // Iterate over known participants and log their full data
+  async function logAllParticipantsFullData() {
+    try {
+      const addresses = (participantsStats.value || [])
+        .map(p => p.account_address)
+        .filter((a): a is string => typeof a === 'string' && a.length > 0);
+
+      await Promise.all(addresses.map(async (addr) => {
+        const participant = await fetchParticipantByAddress(addr);
+        if (participant) {
+          // Log the full participant payload for debugging/inspection
+          console.log('[participant]', addr, participant);
+        } else {
+          console.log('[participant] not found', addr);
+        }
+      }));
+    } catch (err) {
+      console.error('Error logging full participants data:', err);
+    }
+  }
+
   async function init() {
     await Promise.all([
       fetchValidators(),
       fetchParticipantsStats(),
       fetchParticipantsCount()
     ]);
+    // After initial data is loaded, fetch vesting schedules and log full participant data
+    await fetchAllVestingSchedules();
+    logAllParticipantsFullData();
   }
 
   function $reset() {
@@ -269,6 +418,7 @@ export const useValidatorStore = defineStore('validatorStore', () => {
     totalPower.value = '0';
     loading.value = false;
     error.value = null;
+    vestingSchedules.value = {};
   }
 
   return {
@@ -303,6 +453,8 @@ export const useValidatorStore = defineStore('validatorStore', () => {
     fetchInactiveValidators,
     fetchValidator,
     keybase,
+    fetchParticipantByAddress,
+    logAllParticipantsFullData,
     init,
     $reset
   };

@@ -13,12 +13,11 @@ import { Icon } from '@iconify/vue';
 import type {
   AuthAccount,
   TxResponse,
-  DelegatorRewards,
   InferenceResponse,
 } from '@/types';
 import type { Coin } from '@cosmjs/amino';
 import Countdown from '@/components/Countdown.vue';
-import { fromBase64 } from '@cosmjs/encoding';
+// import { fromBase64 } from '@cosmjs/encoding';
 
 const props = defineProps(['address', 'chain']);
 
@@ -27,29 +26,38 @@ const dialog = useTxDialog();
 const format = useFormatter();
 const account = ref({} as AuthAccount);
 const txs = ref({} as TxResponse[]);
-const rewards = ref({} as DelegatorRewards);
 const balances = ref([] as Coin[]);
+const vestingTotal = ref([] as Coin[]);
 const recentReceived = ref([] as TxResponse[]);
+const recentReceivedTransfers = ref([] as TxResponse[])
+const recentMintsOrKeeper = ref([] as TxResponse[])
+const vestingRewardsTxs = ref([] as TxResponse[])
 const inferences = ref({ stats: [] } as InferenceResponse);
 const chart = {};
 
+const seriesColors = ref<string[]>([])
+
+const hoveredSlice = ref<number | null>(null)
+
 onMounted(() => {
-  loadAccount(props.address);
+  loadAccount(props.address)
+  refreshSeriesColors()
+  setTimeout(refreshSeriesColors, 0)
 });
 
 const totalAmountByCategory = computed(() => {
-  let sumRew = 0;
-  rewards.value?.total?.forEach((x) => {
-    sumRew += Number(x.amount);
+  let sumVest = 0;
+  vestingTotal.value?.forEach((x) => {
+    sumVest += format.tokenDisplayNumber(x as any, 'local');
   });
   let sumBal = 0;
   balances.value?.forEach((x) => {
-    sumBal += Number(x.amount);
+    sumBal += format.tokenDisplayNumber(x as any, 'local');
   });
-  return [sumBal, sumRew];
+  return [sumBal, sumVest];
 });
 
-const labels = ['Balance', 'Reward'];
+const labels = ['Balance', 'Vesting'];
 
 const totalAmount = computed(() => {
   return totalAmountByCategory.value.reduce((p, c) => c + p, 0);
@@ -85,17 +93,28 @@ function loadAccount(address: string) {
   blockchain.rpc.getTxsBySender(address).then((x) => {
     txs.value = x.tx_responses;
   });
-  blockchain.rpc.getDistributionDelegatorRewards(address).then((x) => {
-    rewards.value = x;
-  });
   blockchain.rpc.getBankBalances(address).then((x) => {
     balances.value = x.balances;
   });
 
-  const receivedQuery =  `?&pagination.reverse=true&events=coin_received.receiver='${address}'&pagination.limit=5`;
-  blockchain.rpc.getTxs(receivedQuery, {}).then((x) => {
-    recentReceived.value = x.tx_responses;
-  });
+  // Vesting totals
+  blockchain.getTotalVesting(address)
+    .then((x: any) => {
+      vestingTotal.value = x?.total_amount || [];
+    })
+    .catch(() => {
+      vestingTotal.value = [];
+    });
+
+  // Vesting reward transactions
+  const vestQuery = `?events=vest_reward.participant='${address}'&pagination.reverse=true&pagination.limit=50`;
+  blockchain.rpc.getTxs(vestQuery, {})
+    .then((res: any) => {
+      vestingRewardsTxs.value = res?.tx_responses || [];
+    })
+    .catch(() => {
+      vestingRewardsTxs.value = [];
+    });
 
   // Load inference stats
   loadInferenceStats(address);
@@ -115,11 +134,26 @@ function updateEvent() {
   loadAccount(props.address);
 }
 
-function mapAmount(events:{type: string, attributes: {key: string, value: string}[]}[]) {
-  if(!events) return []
-  return events.find(x => x.type==='coin_received')?.attributes
-    .filter(x => x.key === 'YW1vdW50'|| x.key === `amount`)
-    .map(x => x.key==='amount'? x.value : String.fromCharCode(...fromBase64(x.value)))
+function mapAmount(events: {type: string, attributes: {key: string, value: string}[]}[]) {
+  if (!events) return []
+  const decodeKey = (k: string) => (k === 'YW1vdW50' ? 'amount' : k)
+  const evt = events.find(x => x.type === 'transfer')
+          || events.find(x => x.type === 'coin_received')
+          || events.find(x => x.type === 'coinbase')
+  if (!evt) return []
+  return evt.attributes
+    .filter(x => decodeKey(x.key) === 'amount')
+    .map(x => x.value)
+}
+
+function mapVestingRewardAmount(events: {type: string, attributes: {key: string, value: string}[]}[]) {
+  if (!events) return []
+  const decodeKey = (k: string) => (k === 'YW1vdW50' ? 'amount' : k)
+  const evt = events.find(x => x.type === 'vest_reward')
+  if (!evt) return []
+  return evt.attributes
+    .filter(x => decodeKey(x.key) === 'amount')
+    .map(x => x.value)
 }
 
 function getStatusColor(status: string) {
@@ -136,6 +170,36 @@ function getStatusColor(status: string) {
     default:
       return 'text-info';
   }
+}
+
+function rgbStringToHex(rgb: string): string {
+  // supports rgb() or rgba()
+  const m = rgb.match(/rgba?\(([^)]+)\)/i)
+  if (!m) return rgb
+  const parts = m[1].split(',').map(s => parseFloat(s.trim()))
+  const [r,g,b] = parts
+  const toHex = (n: number) => n.toString(16).padStart(2, '0')
+  return `#${toHex(Math.round(r))}${toHex(Math.round(g))}${toHex(Math.round(b))}`
+}
+
+function getCssColorForClass(className: string): string | null {
+  const el = document.createElement('span')
+  el.style.position = 'absolute'
+  el.style.left = '-99999px'
+  el.style.top = '-99999px'
+  el.className = className
+  document.body.appendChild(el)
+  const color = getComputedStyle(el).color
+  document.body.removeChild(el)
+  return color ? rgbStringToHex(color) : null
+}
+
+function refreshSeriesColors(){
+  // Match list icon color classes
+  const balanceHex = getCssColorForClass('text-info')
+  const rewardHex = getCssColorForClass('text-success')
+  const fallback = '#666CFF'
+  seriesColors.value = [balanceHex || fallback, rewardHex || fallback]
 }
 </script>
 <template>
@@ -196,7 +260,14 @@ function getStatusColor(status: string) {
       </div>
       <div class="grid md:!grid-cols-3">
         <div class="md:!col-span-1">
-          <DonutChart :series="totalAmountByCategory" :labels="labels" />
+          <DonutChart
+            :series="totalAmountByCategory"
+            :labels="labels"
+            :hoverIndex="hoveredSlice"
+            :colors="seriesColors"
+            :valueFormatter="(v: number) => format.formatNumber(v, '0,0.[00]')"
+            :totalFormatter="(v: number) => format.formatNumber(v, '0,0.[00]')"
+          />
         </div>
         <div class="mt-4 md:!col-span-2 md:!mt-0 md:!ml-4">          
           <!-- list-->
@@ -207,20 +278,22 @@ function getStatusColor(status: string) {
               v-for="(balanceItem, index) in balances"
               :key="index"
             >
-              <div
-                class="w-9 h-9 rounded overflow-hidden flex items-center justify-center relative mr-4"
-              >
-                <Icon icon="mdi-account-cash" class="text-info" size="20" />
+              <div class="inline-flex items-center" @mouseenter="hoveredSlice = 0" @mouseleave="hoveredSlice = null">
                 <div
-                  class="absolute top-0 bottom-0 left-0 right-0 bg-info opacity-20"
-                ></div>
-              </div>
-              <div class="flex-1">
-                <div class="text-sm font-semibold">
-                  {{ format.formatToken(balanceItem) }}
+                  class="w-9 h-9 rounded overflow-hidden flex items-center justify-center relative mr-4"
+                >
+                  <Icon icon="mdi-account-cash" class="text-info" size="20" />
+                  <div
+                    class="absolute top-0 bottom-0 left-0 right-0 bg-info opacity-20"
+                  ></div>
                 </div>
-                <div class="text-xs">
-                  {{ format.calculatePercent(balanceItem.amount, totalAmount) }}
+                <div>
+                  <div class="text-sm font-semibold">
+                    {{ format.formatToken(balanceItem) }}
+                  </div>
+                  <div class="text-xs">
+                    {{ format.calculatePercent(format.tokenDisplayNumber(balanceItem, 'local'), totalAmount) }}
+                  </div>
                 </div>
               </div>
               <div
@@ -233,29 +306,31 @@ function getStatusColor(status: string) {
                 ${{ format.tokenValue(balanceItem) }}                
               </div>
             </div>
-            <!-- rewards.total -->
+            <!-- vesting.total -->
             <div
               class="flex items-center px-4 mb-2"
-              v-for="(rewardItem, index) in rewards.total"
+              v-for="(vestingItem, index) in vestingTotal"
               :key="index"
             >
-              <div
-                class="w-9 h-9 rounded overflow-hidden flex items-center justify-center relative mr-4"
-              >
-                <Icon
-                  icon="mdi-account-arrow-up"
-                  class="text-success"
-                  size="20"
-                />
+              <div class="inline-flex items-center" @mouseenter="hoveredSlice = 1" @mouseleave="hoveredSlice = null">
                 <div
-                  class="absolute top-0 bottom-0 left-0 right-0 bg-success opacity-20"
-                ></div>
-              </div>
-              <div class="flex-1">
-                <div class="text-sm font-semibold">
-                  {{ format.formatToken(rewardItem) }}
+                  class="w-9 h-9 rounded overflow-hidden flex items-center justify-center relative mr-4"
+                >
+                  <Icon
+                    icon="mdi-timer-sand"
+                    class="text-success"
+                    size="20"
+                  />
+                  <div
+                    class="absolute top-0 bottom-0 left-0 right-0 bg-success opacity-20"
+                  ></div>
                 </div>
-                <div class="text-xs">{{ format.calculatePercent(rewardItem.amount, totalAmount) }}</div>
+                <div>
+                  <div class="text-sm font-semibold">
+                    {{ format.formatToken(vestingItem) }}
+                  </div>
+                  <div class="text-xs">{{ format.calculatePercent(format.tokenDisplayNumber(vestingItem, 'local'), totalAmount) }}</div>
+                </div>
               </div>
               <div
                 class="text-xs truncate relative py-1 px-3 rounded-full w-fit text-primary dark:invert mr-2"
@@ -263,7 +338,7 @@ function getStatusColor(status: string) {
               >
                 <span
                   class="inset-x-0 inset-y-0 opacity-10 absolute bg-primary  dark:invert text-sm"
-                ></span>${{ format.tokenValue(rewardItem) }}
+                ></span>${{ format.tokenValue(vestingItem) }}
                 
               </div>
             </div>
@@ -361,9 +436,9 @@ function getStatusColor(status: string) {
       </div>
     </div>
 
-    <!-- Received -->
+    <!-- Received (Transfers) -->
     <div class="bg-base-100 px-4 pt-3 pb-4 rounded mb-4 shadow">
-      <h2 class="card-title mb-4">{{ $t('account.received') }}</h2>
+      <h2 class="card-title mb-4">Received (Transfers)</h2>
       <div class="overflow-x-auto">
         <table class="table w-full text-sm">
           <thead>
@@ -375,8 +450,8 @@ function getStatusColor(status: string) {
             </tr>
           </thead>
           <tbody class="text-sm">
-            <tr v-if="recentReceived.length === 0"><td colspan="10"><div class="text-center">{{ $t('account.no_transactions') }}</div></td></tr>
-            <tr v-for="(v, index) in recentReceived" :key="index">
+            <tr v-if="recentReceivedTransfers.length === 0"><td colspan="10"><div class="text-center">{{ $t('account.no_transactions') }}</div></td></tr>
+            <tr v-for="(v, index) in recentReceivedTransfers" :key="index">
               <td class="text-sm py-3">
                 <RouterLink :to="`/${chain}/block/${v.height}`" class="text-primary dark:invert">{{
                   v.height
@@ -399,6 +474,48 @@ function getStatusColor(status: string) {
                 <Icon v-else icon="mdi-multiply" class="text-error text-lg" />
               </td>
               <td class="py-3">{{ format.toLocaleDate(v.timestamp) }} <span class=" text-xs">({{ format.toDay(v.timestamp, 'from') }})</span> </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Received (Vesting Rewards) -->
+    <div class="bg-base-100 px-4 pt-3 pb-4 rounded mb-4 shadow">
+      <h2 class="card-title mb-4">Vesting Rewards</h2>
+      <div class="overflow-x-auto">
+        <table class="table w-full text-sm">
+          <thead>
+            <tr>
+              <th class="py-3">{{ $t('account.height') }}</th>
+              <th class="py-3">{{ $t('account.hash') }}</th>
+              <th class="py-3">{{ $t('account.amount') }}</th>
+            </tr>
+          </thead>
+          <tbody class="text-sm">
+            <tr v-if="vestingRewardsTxs.length === 0"><td colspan="10"><div class="text-center">{{ $t('account.no_transactions') }}</div></td></tr>
+            <tr v-for="(v, index) in vestingRewardsTxs" :key="index">
+              <td class="text-sm py-3">
+                <RouterLink :to="`/${chain}/block/${v.height}`" class="text-primary dark:invert">{{
+                  v.height
+                }}</RouterLink>
+              </td>
+              <td class="truncate py-3" style="max-width: 200px">
+                <RouterLink :to="`/${chain}/tx/${v.txhash}`" class="text-primary dark:invert">
+                  {{ v.txhash }}
+                </RouterLink>
+              </td>
+              <td class="flex items-center py-3">
+                <div class="mr-2">
+                  {{ mapVestingRewardAmount(v.events)?.join(", ")}}
+                </div>
+                <Icon
+                  v-if="v.code === 0"
+                  icon="mdi-check"
+                  class="text-success text-lg"
+                />
+                <Icon v-else icon="mdi-multiply" class="text-error text-lg" />
+              </td>
             </tr>
           </tbody>
         </table>
