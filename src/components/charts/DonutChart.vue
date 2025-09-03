@@ -81,7 +81,37 @@ function getSlicePaths(): SVGPathElement[] {
   return Array.from(el.querySelectorAll('.apexcharts-pie path')) as SVGPathElement[]
 }
 
+
 const UNHOVER_OPACITY = 0.2
+
+function updateCenterLabel(idx: number | null) {
+  if (!chartRef.value) return
+  const el: HTMLElement = (chartRef.value as any).$el || (chartRef.value as any).el || chartRef.value
+  const labelEl = el.querySelector('.apexcharts-datalabel-label') as HTMLElement | null
+  const valueEl = el.querySelector('.apexcharts-datalabel-value') as HTMLElement | null
+  if (!labelEl || !valueEl) return
+
+  // Compute label + value
+  if (idx === null) {
+    labelEl.textContent = 'Total'
+    const seriesArray: number[] = (props.series as any[] || []).map((v: any) => Number(v) || 0)
+    const total = seriesArray.reduce((a, b) => a + b, 0)
+    try {
+      valueEl.textContent = props.totalFormatter ? props.totalFormatter(total) : String(total)
+    } catch (_) {
+      valueEl.textContent = String(total)
+    }
+  } else {
+    const name = props.labels?.[idx] ?? ''
+    const rawVal = Number((props.series as any[])[idx] || 0)
+    labelEl.textContent = String(name)
+    try {
+      valueEl.textContent = props.valueFormatter ? props.valueFormatter(rawVal) : String(rawVal)
+    } catch (_) {
+      valueEl.textContent = String(rawVal)
+    }
+  }
+}
 
 function applyHover(idx: number | null) {
   // avoid redundant work & guard against recursion
@@ -97,6 +127,8 @@ function applyHover(idx: number | null) {
     p.style.opacity = (idx === null || i === idx) ? '1' : String(UNHOVER_OPACITY)
   })
 
+  updateCenterLabel(idx)
+
   // Optionally synthesize events when hovering a slice to update center labels
   const target = (idx === null) ? null : paths[idx]
   if (target) {
@@ -110,12 +142,18 @@ function applyHover(idx: number | null) {
   }
 }
 
-watch(() => props.hoverIndex, (idx) => { 
+watch(() => props.hoverIndex, (idx) => {
   console.log('hoverIndex', idx)
-  applyHover(idx ?? null);
- })
+  requestAnimationFrame(() => {
+    applyHover(idx ?? null)
+    updateCenterLabel(idx ?? null)
+  })
+})
 
-onMounted(() => nextTick(() => applyHover(null)))
+onMounted(() => nextTick(() => {
+  applyHover(null)
+  updateCenterLabel(null)
+}))
 </script>
 
 <template>

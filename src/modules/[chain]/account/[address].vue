@@ -35,6 +35,9 @@ const vestingRewardsTxs = ref([] as TxResponse[])
 const inferences = ref({ stats: [] } as InferenceResponse);
 const chart = {};
 
+const valueFmt = (v: number) => format.formatNumber(v, '0,0.[00]');
+const totalFmt = (v: number) => format.formatNumber(v, '0,0.[00]');
+
 const seriesColors = ref<string[]>([])
 
 const hoveredSlice = ref<number | null>(null)
@@ -265,8 +268,8 @@ function refreshSeriesColors(){
             :labels="labels"
             :hoverIndex="hoveredSlice"
             :colors="seriesColors"
-            :valueFormatter="(v: number) => format.formatNumber(v, '0,0.[00]')"
-            :totalFormatter="(v: number) => format.formatNumber(v, '0,0.[00]')"
+            :valueFormatter="valueFmt"
+            :totalFormatter="totalFmt"
           />
         </div>
         <div class="mt-4 md:!col-span-2 md:!mt-0 md:!ml-4">          
