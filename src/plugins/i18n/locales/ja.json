@@ -202,6 +202,7 @@
     "active": "アクティブ",
     "inactive": "非アクティブ",
     "rank": "ランク",
+    "next_poc": "次のPoC",
     "validator": "バリデーター",
     "voting_power": "投票権",
     "24h_changes": "24時間の変化",
@@ -236,11 +237,27 @@
     "final_reward": "最終報酬",
     "earned_reward": "獲得報酬",
     "validators": "バリデーター",
+    "validators_hosts": "バリデーター/ホスト",
     "earned": "獲得",
     "active": "アクティブ",
     "reputation": "評判",
     "missed_blocks": "ミスしたブロック",
-    "uptime": "稼働時間"
+    "uptime": "稼働時間",
+    "hints": {
+      "next_poc": "次のProof of Computeサイクルまでの残り時間",
+      "total_power": "稼働中のすべてのホスト/バリデーターの計算能力",
+      "final_reward": "直近のエポックで獲得した報酬の合計（コイン換算）",
+      "earned_reward": "現在のエポックで全ホスト/バリデーターにより蓄積された報酬の合計",
+      "validators": "最新のPoCに合格し、現在ネットワークで稼働中のホスト/バリデーター数",
+      "table_validators_hosts": "直近のPoCに参加したすべてのホストの一覧",
+      "table_voting_power": "計算能力の普遍的な単位",
+      "table_24h_changes": "直近24時間の投票権の変化（直近のPoCフェーズと比較）",
+      "table_earned": "現在のエポックで各ホスト/バリデーターが獲得した報酬。",
+      "table_active": "各ホストが積極的に参加した日数",
+      "table_reputation": "誠実性と作業品質に基づく各ホスト/バリデーターのスコア",
+      "table_missed_blocks": "ホストが生成または検証に失敗したブロック数",
+      "table_uptime": "ホストのサーバーが稼働していた時間の割合。"
+    }
   },
   "statesync": {
     "title": "ステートシンクとは？",
@@ -315,8 +332,8 @@
   },
   "developer": {
     "monthly_tokens": "月次トークン",
-    "global_users": "グローバルユーザー",
-    "active_providers": "アクティブプロバイダー",
+    "global_users": "開発者数",
+    "active_providers": "稼働中のホスト/バリデーター数",
     "models": "モデル",
     "throughput": "スループット",
     "developers": "開発者",
@@ -328,7 +345,14 @@
     "last_active": "最終アクティブ",
     "active_developers": "アクティブ開発者",
     "inactive_developers": "非アクティブ開発者",
-    "description": "開発者活動とプロジェクト統計"
+    "description": "開発者活動とプロジェクト統計",
+    "hints": {
+      "ai_tokens_last_week": "直近7エポックで処理された入力/出力AIトークンの合計",
+      "global_users": "Gonka分散型ネットワーク上でAIアプリを開発・デプロイしている開発者数",
+      "active_providers": "最新のPoCに合格し、現在ネットワークで稼働中のホスト/バリデーター数",
+      "models": "現在ネットワークに登録されているLLMモデルの数",
+      "throughput": "稼働中のすべてのホスト/バリデーターの計算能力"
+    }
   },
   "inference": {
     "inferences_today": "推論 (今日)",
@@ -344,6 +368,12 @@
     "max_throughput": "最大スループット",
     "latency": "レイテンシー",
     "no_models": "利用可能なモデルがありません",
-    "performance_chart_placeholder": "パフォーマンスチャートがここに表示されます"
+    "performance_chart_placeholder": "パフォーマンスチャートがここに表示されます",
+    "hints": {
+      "inferences_today": "本日、ネットワークで処理された推論リクエストの総数",
+      "inferences_last_week": "過去7エポック（1週間）で処理された推論リクエストの総数",
+      "ai_tokens_today": "本日、推論リクエストで処理された入力/出力AIトークンの合計",
+      "ai_tokens_last_week": "過去7エポック（1週間）で推論リクエストにおいて処理された入力/出力AIトークンの合計"
+    }
   }
 }

@@ -1,8 +1,9 @@
 <script lang="ts" setup>
-import { useFormatter } from '@/stores';
+import { useFormatter, useStakingStore, useValidatorStore } from '@/stores';
 import type { Tally } from '@/types';
 import { computed } from '@vue/reactivity';
 import type { PropType } from 'vue';
+import { onMounted } from 'vue';
 
 const props = defineProps({
   tally: { type: Object as PropType<Tally> },
@@ -12,20 +13,54 @@ const props = defineProps({
       bonded_tokens: string;
     }>,
   },
+  status: { type: String, required: false },
 });
-const total = computed(() => props.pool?.bonded_tokens);
+
+const validatorStore = useValidatorStore();
+
+const total = computed(() => {
+  const t = props.tally;
+  if (!t) return 0n;
+  const yes = BigInt(t.yes || 0);
+  const no = BigInt(t.no || 0);
+  const abstain = BigInt(t.abstain || 0);
+  const veto = BigInt(t.no_with_veto || 0);
+  return yes + no + abstain + veto;
+});
+
 const format = useFormatter();
-const yes = computed(() =>
-  format.calculatePercent(props.tally?.yes, total.value)
+
+// Denominator: during voting -> sum(staking tokens of active participants); after finalized -> sum of tally
+const denominator = computed<string>(() => {
+  const isVoting = props.status === 'PROPOSAL_STATUS_VOTING_PERIOD';
+  if (isVoting) {
+    console.log('denominator validatorStore.activeStakingTotal', validatorStore.activeStakingTotal);
+    return String(validatorStore.activeStakingTotal || 0);
+  }
+  console.log('denominator total', total.value);
+  return total.value.toString();
+});
+
+onMounted(async () => {
+  try {
+    const needParticipants = !validatorStore.participantsMap || Object.keys(validatorStore.participantsMap).length === 0;
+    if (needParticipants) {
+      await validatorStore.init();
+    }
+  } catch {}
+});
+
+const yes = computed(() =>  
+  format.calculatePercent(props.tally?.yes, denominator.value)
 );
 const no = computed(() =>
-  format.calculatePercent(props.tally?.no, total.value)
+  format.calculatePercent(props.tally?.no, denominator.value)
 );
 const abstain = computed(() =>
-  format.calculatePercent(props.tally?.abstain, total.value)
+  format.calculatePercent(props.tally?.abstain, denominator.value)
 );
 const veto = computed(() =>
-  format.calculatePercent(props.tally?.no_with_veto, total.value)
+  format.calculatePercent(props.tally?.no_with_veto, denominator.value)
 );
 </script>
 

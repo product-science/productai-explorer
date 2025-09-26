@@ -70,6 +70,20 @@ router.beforeEach(async (to, from, next) => {
       console.log(`No redirect needed or available for ${chain}`);
     }
   }
+  // Handle root path: redirect to default chain, then its first feature via guard above
+  if (to.path === '/' || to.matched.length === 0) {
+    const blockchain = useBlockchain();
+    // Ensure chains are initialized
+    if (!blockchain.chainName) {
+      // Calling dashboard.initial() will set default chain via setupDefault
+      try {
+        await blockchain.dashboard.initial();
+      } catch {}
+    }
+    if (blockchain.chainName) {
+      return next({ path: `/${blockchain.chainName}`, replace: true });
+    }
+  }
   next();
 });
 

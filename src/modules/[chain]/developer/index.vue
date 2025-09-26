@@ -303,36 +303,41 @@ function openConnectWallet() {
 <template>
 <div>
   <!-- First Row: Statistics Cards -->
-  <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5 mt-4">
+  <div class="grid gap-4 grid-cols-[repeat(auto-fit,minmax(265px,1fr))] mt-4">
     <CardStatisticsVertical
       :title="$t('inference.ai_tokens_last_week')"
       icon="mdi:alpha-t-box"
       :stats="aiTokensLastWeek"
       color="primary"
+      :hint="$t('developer.hints.ai_tokens_last_week')"
     />
     <CardStatisticsVertical
       :title="$t('developer.global_users')"
       icon="mdi:account-group"
       :stats="globalUsers"
       color="success"
+      :hint="$t('developer.hints.global_users')"
     />
     <CardStatisticsVertical
       :title="$t('developer.active_providers')"
       icon="mdi:server-network"
       :stats="activeProviders"
       color="warning"
+      :hint="$t('developer.hints.active_providers')"
     />
     <CardStatisticsVertical
       :title="$t('developer.models')"
       icon="mdi:cube-outline"
       :stats="models"
       color="info"
+      :hint="$t('developer.hints.models')"
     />
     <CardStatisticsVertical
       :title="$t('developer.throughput')"
       icon="mdi:lightning-bolt"
       :stats="throughput"
       color="secondary"
+      :hint="$t('developer.hints.throughput')"
     />
   </div>
 
@@ -530,7 +535,8 @@ function openConnectWallet() {
   {
     meta: {
       i18n: 'developer',
-      order: 4
+      order: 3,
+      description: 'Developers build and deploy AI applications within Gonka decentralized network, leveraging the distributed computational power to run their models.'
     }
   }
 </route>

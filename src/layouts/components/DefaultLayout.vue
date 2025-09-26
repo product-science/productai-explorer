@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import { Icon } from '@iconify/vue';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 
 // Components
 import newFooter from '@/layouts/components/NavFooter.vue';
@@ -69,6 +70,20 @@ const behind = computed(() => {
 });
 
 dayjs()
+
+// Module info bar support
+const route = useRoute();
+const infoOpen = ref(false);
+const hasInfo = computed(() => Boolean(route.meta?.description));
+const infoDescription = computed(() => (route.meta?.description as string) || '');
+
+watch(
+  () => route.fullPath,
+  () => {
+    // Close info bar on navigation
+    infoOpen.value = false;
+  }
+);
 
 </script>
 
@@ -318,11 +333,28 @@ dayjs()
 
         <div class="flex-1 w-0"></div>
 
+        <button
+          v-if="hasInfo"
+          class="btn btn-ghost btn-circle btn-sm mx-1"
+          @click="infoOpen = !infoOpen"
+          :title="$t ? $t('pages.info') : 'Info'"
+        >
+          <Icon :icon="infoOpen ? 'mdi:information' : 'mdi:information-outline'" class="text-2xl text-gray-500 dark:text-gray-400" />
+        </button>
+
         <!-- <NavSearchBar />-->
         <NavBarI18n class="hidden md:!inline-block" />
         <NavbarThemeSwitcher class="!inline-block" />
         <NavbarSearch class="!inline-block" />
         <NavBarWallet />
+      </div>
+
+      <!-- Module info bar -->
+      <div v-if="hasInfo && infoOpen" class="bg-base-100 mb-4 rounded px-4 py-3 shadow">
+        <div class="flex items-start">
+          <Icon icon="mdi:information-outline" class="text-xl mr-2 text-gray-500 dark:text-gray-300 mt-0.5" />
+          <div class="text-sm text-main whitespace-pre-line">{{ infoDescription }}</div>
+        </div>
       </div>
 
       <!-- 👉 Pages -->

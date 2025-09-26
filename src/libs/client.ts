@@ -12,7 +12,6 @@ import {
   withCustomRequest,
 } from './api/registry';
 import { PageRequest,type Coin } from '@/types';
-import semver from 'semver'
 
 export class BaseRestClient<R extends AbstractRegistry> {
   version: string;
@@ -291,11 +290,8 @@ export class CosmosRestClient extends BaseRestClient<RequestRegistry> {
   // tx
   async getTxsBySender(sender: string, page?: PageRequest) {
     if(!page) page = new PageRequest()
-    let query = `?events=message.sender='${sender}'&pagination.limit=${page.limit}&pagination.offset=${page.offset||0}`;
-    if (semver.gte(this.version.replaceAll('v', ''), '0.50.0')) {
-      query = `?query=message.sender='${sender}'&pagination.limit=${page.limit}&pagination.offset=${page.offset||0}`;
-    }
-    return this.request(this.registry.tx_txs, {}, query);
+    const queryQuery  = `?query=message.sender='${sender}'&pagination.limit=${page.limit}&pagination.offset=${page.offset||0}`
+    return this.request(this.registry.tx_txs, {}, queryQuery)
   }
   // query ibc sending msgs
   // ?&pagination.reverse=true&events=send_packet.packet_src_channel='${channel}'&events=send_packet.packet_src_port='${port}'
@@ -303,12 +299,13 @@ export class CosmosRestClient extends BaseRestClient<RequestRegistry> {
   // ?&pagination.reverse=true&events=recv_packet.packet_dst_channel='${channel}'&events=recv_packet.packet_dst_port='${port}'
   async getTxs(query: string, params: any, page?: PageRequest) {
     if(!page) page = new PageRequest()
-    if (semver.gte(this.version.replaceAll('v', ''), '0.50.0')) {
-      let query_edit = query.replaceAll('events=', 'query=')    
-      return this.request(this.registry.tx_txs, params, `${query_edit}&${page.toQueryString()}`);
-    } else { 
-      return this.request(this.registry.tx_txs, params, `${query}&${page.toQueryString()}`);
-    }
+    // Avoid duplicating pagination params if caller already provided them
+    const hasPagination = /[?&]pagination\./.test(query)
+    const paginationSuffix = hasPagination ? '' : `&${page.toQueryString()}`
+
+    // Always use query= key; rewrite legacy events= to query=
+    const preferQuery = query.includes('events=') ? query.replaceAll('events=', 'query=') : query
+    return this.request(this.registry.tx_txs, params, `${preferQuery}${paginationSuffix}`)
   }
   async getTxsAt(height: string | number) {
     return this.request(this.registry.tx_txs_block, { height });

@@ -5,8 +5,6 @@ import { computed, ref } from '@vue/reactivity';
 import type { Tx, TxResponse } from '@/types';
 
 import { JsonViewer } from "vue3-json-viewer"
-// if you used v1.0.5 or latster ,you should add import "vue3-json-viewer/dist/index.css"
-import "vue3-json-viewer/dist/index.css";
 
 const props = defineProps(['hash', 'chain']);
 
@@ -124,7 +122,15 @@ const messages = computed(() => {
 
         <div v-if="tx.tx_response" class="bg-base-100 px-4 pt-3 pb-4 rounded shadow">
             <h2 class="card-title truncate mb-2">JSON</h2>
-            <JsonViewer :value="tx" :theme="baseStore.theme" style="background: transparent;" copyable boxed sort expand-depth="5"/>
+            <JsonViewer 
+                :value="tx" 
+                :theme="baseStore.theme" 
+                style="background: transparent;" 
+                copyable 
+                boxed 
+                sort 
+                :expand-depth="5"
+            />
         </div>
     </div>
 </template>

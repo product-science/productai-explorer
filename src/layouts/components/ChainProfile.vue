@@ -3,7 +3,6 @@ import { useBlockchain, useBaseStore, type Endpoint } from '@/stores';
 import { useRouter } from 'vue-router';
 const chainStore = useBlockchain();
 const baseStore = useBaseStore();
-chainStore.initial();
 const router = useRouter();
 function changeEndpoint(item: Endpoint) {
   chainStore.setRestEndpoint(item);

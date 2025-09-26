@@ -202,6 +202,7 @@
     "active": "Aktiv",
     "inactive": "Inaktiv",
     "rank": "Rang",
+    "next_poc": "Nächster PoC",
     "validator": "Validator",
     "voting_power": "Stimmkraft",
     "24h_changes": "24h Änderungen",
@@ -236,11 +237,27 @@
     "final_reward": "Endbelohnung",
     "earned_reward": "Verdiente Belohnung",
     "validators": "Validatoren",
+    "validators_hosts": "Validatoren/Hosts",
     "earned": "Verdient",
     "active": "Aktiv",
     "reputation": "Ruf",
     "missed_blocks": "Verpasste Blöcke",
-    "uptime": "Betriebszeit"
+    "uptime": "Betriebszeit",
+    "hints": {
+      "next_poc": "Verbleibende Zeit bis zum nächsten Proof‑of‑Compute‑Zyklus",
+      "total_power": "Rechenkapazität aller aktiven Hosts/Validatoren",
+      "final_reward": "In der letzten Epoche verdiente Gesamtbelohnungen (in Coins)",
+      "earned_reward": "Gesamte von allen Hosts/Validatoren in der aktuellen Epoche angesammelten Belohnungen",
+      "validators": "Anzahl der Hosts/Validatoren, die den neuesten PoC bestanden haben und derzeit im Netzwerk aktiv sind",
+      "table_validators_hosts": "Liste aller Hosts, die am neuesten PoC teilgenommen haben",
+      "table_voting_power": "Eine universelle Einheit der Rechenkapazität",
+      "table_24h_changes": "Änderung der Stimmkraft in den letzten 24 Stunden (verglichen mit der jüngsten PoC‑Phase)",
+      "table_earned": "Belohnungen, die jeder Host/Validator in der aktuellen Epoche verdient hat.",
+      "table_active": "Anzahl der Tage, an denen jeder Host aktiv teilgenommen hat",
+      "table_reputation": "Bewertung jedes Hosts/Validators basierend auf Ehrlichkeit und Arbeitsqualität",
+      "table_missed_blocks": "Anzahl der Blöcke, die ein Host nicht produziert oder validiert hat",
+      "table_uptime": "Prozentsatz der Zeit, in der die Server eines Hosts aktiv waren."
+    }
   },
   "statesync": {
     "title": "Was ist State Sync?",
@@ -314,8 +331,8 @@
   },
   "developer": {
     "monthly_tokens": "Monatliche Token",
-    "global_users": "Globale Benutzer",
-    "active_providers": "Aktive Anbieter",
+    "global_users": "Anzahl der Entwickler",
+    "active_providers": "Anzahl aktiver Hosts/Validatoren",
     "models": "Modelle",
     "throughput": "Durchsatz",
     "developers": "Entwickler",
@@ -327,7 +344,14 @@
     "last_active": "Zuletzt aktiv",
     "active_developers": "Aktive Entwickler",
     "inactive_developers": "Inaktive Entwickler",
-    "description": "Entwickleraktivität und Projektstatistiken"
+    "description": "Entwickleraktivität und Projektstatistiken",
+    "hints": {
+      "ai_tokens_last_week": "In den letzten sieben Epochen verarbeitete Gesamtzahl an Eingabe‑ und Ausgabe‑AI‑Tokens.",
+      "global_users": "Anzahl der Entwickler, die im dezentralen Gonka‑Netzwerk AI‑Anwendungen entwickeln und bereitstellen",
+      "active_providers": "Anzahl der Hosts/Validatoren, die den neuesten PoC bestanden haben und derzeit im Netzwerk aktiv sind",
+      "models": "Anzahl der derzeit im Netzwerk registrierten LLM‑Modelle",
+      "throughput": "Rechenkapazität aller aktiven Hosts/Validatoren"
+    }
   },
   "inference": {
     "inferences_today": "Inferenzen (Heute)",
@@ -343,6 +367,12 @@
     "max_throughput": "Max. Durchsatz",
     "latency": "Latenz",
     "no_models": "Keine Modelle verfügbar",
-    "performance_chart_placeholder": "Leistungsdiagramm wird hier angezeigt"
+    "performance_chart_placeholder": "Leistungsdiagramm wird hier angezeigt",
+    "hints": {
+      "inferences_today": "Gesamtzahl der Inferenzanfragen, die am heutigen Tag vom Netzwerk verarbeitet wurden.",
+      "inferences_last_week": "Gesamtzahl der Inferenzanfragen, die in den letzten 7 Epochen (eine Woche) verarbeitet wurden.",
+      "ai_tokens_today": "Gesamte Eingabe‑ und Ausgabe‑AI‑Tokens, die am heutigen Tag in Inferenzanfragen verarbeitet wurden.",
+      "ai_tokens_last_week": "Gesamte Eingabe‑ und Ausgabe‑AI‑Tokens, die in den letzten 7 Epochen (eine Woche) in Inferenzanfragen verarbeitet wurden."
+    }
   }
 }

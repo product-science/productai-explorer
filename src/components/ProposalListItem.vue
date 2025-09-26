@@ -78,6 +78,7 @@ function metaItem(metadata: string|undefined): { title: string; summary: string 
             <ProposalProcess
               :pool="staking.pool"
               :tally="item.final_tally_result"
+              :status="item.status"
             ></ProposalProcess>
           </td>
           <td class="w-36">
@@ -181,6 +182,7 @@ function metaItem(metadata: string|undefined): { title: string; summary: string 
           <ProposalProcess
             :pool="staking.pool"
             :tally="item.final_tally_result"
+            :status="item.status"
           ></ProposalProcess>
         </div>
 

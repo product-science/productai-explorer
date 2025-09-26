@@ -6,6 +6,9 @@ import { createApp, ref } from 'vue';
 import { createPinia } from 'pinia';
 import LazyLoad from 'lazy-load-vue3';
 
+// if you used v1.0.5 or latster ,you should add import "vue3-json-viewer/dist/index.css"
+import 'vue3-json-viewer/dist/index.css';
+
 import router from './router';
 import { useBaseStore } from './stores/useBaseStore';
 import { Buffer } from 'buffer';

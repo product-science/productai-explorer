@@ -202,6 +202,7 @@
     "active": "활성",
     "inactive": "비활성",
     "rank": "순위",
+    "next_poc": "다음 PoC",
     "validator": "검증인",
     "voting_power": "투표 권한",
     "24h_changes": "24시간 변화",
@@ -236,11 +237,27 @@
     "final_reward": "최종 보상",
     "earned_reward": "획득한 보상",
     "validators": "검증인",
+    "validators_hosts": "검증인/호스트",
     "earned": "획득",
     "active": "활성",
     "reputation": "평판",
     "missed_blocks": "놓친 블록",
-    "uptime": "가동시간"
+    "uptime": "가동시간",
+    "hints": {
+      "next_poc": "다음 Proof of Compute 사이클까지 남은 시간",
+      "total_power": "활성 호스트/검증인의 전체 연산 능력",
+      "final_reward": "지난 에포크에서 획득한 총 보상(코인 기준)",
+      "earned_reward": "현재 에포크에서 모든 호스트/검증인이 누적한 총 보상",
+      "validators": "최신 PoC를 통과하여 현재 네트워크에서 활성 상태인 호스트/검증인 수",
+      "table_validators_hosts": "가장 최근 PoC에 참여한 모든 호스트 목록",
+      "table_voting_power": "연산 능력을 나타내는 보편적 단위",
+      "table_24h_changes": "최근 24시간 동안의 투표 권한 변화(가장 최근 PoC 단계와 비교)",
+      "table_earned": "현재 에포크에서 각 호스트/검증인이 획득한 보상.",
+      "table_active": "각 호스트가 적극적으로 참여한 일수",
+      "table_reputation": "정직성과 작업 품질을 기준으로 한 각 호스트/검증인의 점수",
+      "table_missed_blocks": "호스트가 생성하거나 검증하지 못한 블록 수",
+      "table_uptime": "호스트의 서버가 활성 상태였던 시간의 비율."
+    }
   },
   "statesync": {
     "title": "상태 동기화란?",
@@ -314,8 +331,8 @@
   },
   "developer": {
     "monthly_tokens": "월간 토큰",
-    "global_users": "글로벌 사용자",
-    "active_providers": "활성 제공자",
+    "global_users": "개발자 수",
+    "active_providers": "활성 호스트/검증인 수",
     "models": "모델",
     "throughput": "처리량",
     "developers": "개발자",
@@ -327,7 +344,14 @@
     "last_active": "마지막 활성",
     "active_developers": "활성 개발자",
     "inactive_developers": "비활성 개발자",
-    "description": "개발자 활동 및 프로젝트 통계"
+    "description": "개발자 활동 및 프로젝트 통계",
+    "hints": {
+      "ai_tokens_last_week": "최근 7개 에포크 동안 처리된 입력/출력 AI 토큰 총합",
+      "global_users": "Gonka 분산 네트워크에서 AI 애플리케이션을 개발·배포하는 개발자 수",
+      "active_providers": "최신 PoC를 통과하여 현재 네트워크에서 활성 상태인 호스트/검증인 수",
+      "models": "현재 네트워크에 등록된 LLM 모델 수",
+      "throughput": "활성 호스트/검증인의 전체 연산 능력"
+    }
   },
   "inference": {
     "inferences_today": "추론 (오늘)",
@@ -343,6 +367,12 @@
     "max_throughput": "최대 처리량",
     "latency": "지연 시간",
     "no_models": "사용 가능한 모델이 없습니다",
-    "performance_chart_placeholder": "성능 차트가 여기에 표시됩니다"
+    "performance_chart_placeholder": "성능 차트가 여기에 표시됩니다",
+    "hints": {
+      "inferences_today": "오늘 네트워크에서 처리된 추론 요청의 총 수",
+      "inferences_last_week": "지난 7개 에포크(1주) 동안 처리된 추론 요청의 총 수",
+      "ai_tokens_today": "오늘 추론 요청에서 처리된 입력/출력 AI 토큰 총합",
+      "ai_tokens_last_week": "지난 7개 에포크(1주) 동안 추론 요청에서 처리된 입력/출력 AI 토큰 총합"
+    }
   }
 }

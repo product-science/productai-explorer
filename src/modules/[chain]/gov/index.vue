@@ -10,14 +10,14 @@ const store = useGovStore();
 const pageRequest = ref(new PageRequest())
 
 onMounted(() => {
-    store.fetchProposals('2').then((x) => {
-        if (x?.proposals?.length === 0) {
-            tab.value = '3';
-            store.fetchProposals('3');
-        }
-        store.fetchProposals('3');
-        store.fetchProposals('4');
-    });
+  console.log('gov index onMounted');  
+  store.fetchProposals('2').then((x) => {
+    if (x?.proposals?.length === 0) {
+      tab.value = '3';
+    }
+  });
+  store.fetchProposals('3');
+  store.fetchProposals('4');
 });
 
 const changeTab = (val: '2' | '3' | '4') => {
@@ -47,7 +47,8 @@ function page(p: number) {
   {
     meta: {
       i18n: 'governance',
-      order: 2
+      order: 6,
+      description: 'In Gonka, governance power is earned through verifiable compute work, not passive coin ownership.\n\nGovernance decisions are made through PoC-weighted voting, where each participant’s influence is proportional to their verified compute activity and committed collateral.'
     }
   }
 </route>

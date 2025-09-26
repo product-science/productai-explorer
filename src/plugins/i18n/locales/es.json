@@ -202,6 +202,7 @@
     "active": "Activo",
     "inactive": "Inactivo",
     "rank": "Rango",
+    "next_poc": "Próximo PoC",
     "voting_power": "Poder de Voto",
     "24h_changes": "Cambios en 24h",
     "commission": "Comisión",
@@ -235,11 +236,27 @@
     "final_reward": "Recompensa Final",
     "earned_reward": "Recompensa Ganada",
     "validators": "Validadores",
+    "validators_hosts": "Validadores/Hosts",
     "earned": "Ganado",
     "active": "Activo",
     "reputation": "Reputación",
     "missed_blocks": "Bloques Perdidos",
-    "uptime": "Tiempo de Actividad"
+    "uptime": "Tiempo de Actividad",
+    "hints": {
+      "next_poc": "Tiempo restante hasta el próximo ciclo de Proof of Compute",
+      "total_power": "Capacidad computacional de todos los Hosts/Validadores activos",
+      "final_reward": "Recompensas totales ganadas en la última época (en monedas)",
+      "earned_reward": "Recompensas totales acumuladas por todos los Hosts/Validadores en la época actual",
+      "validators": "Número de Hosts/Validadores que superaron el PoC más reciente y están activos en la red",
+      "table_validators_hosts": "Lista de todos los Hosts que participaron en el PoC más reciente",
+      "table_voting_power": "Una unidad universal de capacidad de cómputo",
+      "table_24h_changes": "Cambio del Poder de Voto durante las últimas 24 horas (comparado con la fase de PoC más reciente)",
+      "table_earned": "Recompensas ganadas por cada Host/Validador en la época actual.",
+      "table_active": "Número de días que cada Host ha participado activamente",
+      "table_reputation": "Puntuación de cada Host/Validador basada en la honestidad y la calidad del trabajo realizado",
+      "table_missed_blocks": "Número de bloques que un Host no logró producir o validar",
+      "table_uptime": "Porcentaje de tiempo que los servidores de un Host estuvieron activos."
+    }
   },
   "statesync": {
     "title": "¿Qué es State Sync?",
@@ -313,8 +330,8 @@
   },
   "developer": {
     "monthly_tokens": "Tokens Mensuales",
-    "global_users": "Usuarios Globales",
-    "active_providers": "Proveedores Activos",
+    "global_users": "Número de Desarrolladores",
+    "active_providers": "Número de Hosts/Validadores activos",
     "models": "Modelos",
     "throughput": "Rendimiento",
     "developers": "Desarrolladores",
@@ -326,7 +343,14 @@
     "last_active": "Último activo",
     "active_developers": "Desarrolladores Activos",
     "inactive_developers": "Desarrolladores Inactivos",
-    "description": "Actividad de desarrolladores y estadísticas de proyectos"
+    "description": "Actividad de desarrolladores y estadísticas de proyectos",
+    "hints": {
+      "ai_tokens_last_week": "Total de tokens de IA de entrada y salida procesados durante las últimas siete épocas.",
+      "global_users": "Cantidad de desarrolladores que construyen y despliegan aplicaciones de IA dentro de la red descentralizada Gonka",
+      "active_providers": "Número de Hosts/Validadores que superaron el PoC más reciente y están activos en la red",
+      "models": "Número de modelos LLM registrados actualmente en la red",
+      "throughput": "Capacidad computacional de todos los Hosts/Validadores activos"
+    }
   },
   "inference": {
     "inferences_today": "Inferencias (Hoy)",
@@ -342,6 +366,12 @@
     "max_throughput": "Rendimiento Máximo",
     "latency": "Latencia",
     "no_models": "No hay modelos disponibles",
-    "performance_chart_placeholder": "El gráfico de rendimiento se mostrará aquí"
+    "performance_chart_placeholder": "El gráfico de rendimiento se mostrará aquí",
+    "hints": {
+      "inferences_today": "Número total de solicitudes de inferencia procesadas por la red durante el día actual.",
+      "inferences_last_week": "Número total de solicitudes de inferencia procesadas durante las últimas 7 épocas (una semana).",
+      "ai_tokens_today": "Total de tokens de IA de entrada y salida procesados en solicitudes de inferencia durante el día actual.",
+      "ai_tokens_last_week": "Total de tokens de IA de entrada y salida procesados en solicitudes de inferencia durante las últimas 7 épocas (una semana)."
+    }
   }
 }

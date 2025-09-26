@@ -193,6 +193,7 @@
     "active": "活跃",
     "inactive": "不活跃",
     "rank": "排名",
+    "next_poc": "下一次 PoC",
     "validator": "验证人",
     "voting_power": "权重",
     "24h_changes": "24小时变化",
@@ -227,11 +228,27 @@
     "final_reward": "最终奖励",
     "earned_reward": "已获得奖励",
     "validators": "验证人",
+    "validators_hosts": "验证人/主机",
     "earned": "已获得",
     "active": "活跃",
     "reputation": "声誉",
     "missed_blocks": "错过区块",
-    "uptime": "正常运行时间"
+    "uptime": "正常运行时间",
+    "hints": {
+      "next_poc": "距离下一次 Proof of Compute 周期的剩余时间",
+      "total_power": "所有活跃主机/验证者的计算能力",
+      "final_reward": "上一轮 epoch 中获得的总奖励（以币计）",
+      "earned_reward": "当前 epoch 中所有主机/验证者累计的总奖励",
+      "validators": "通过最新 PoC 且当前在网络中活跃的主机/验证者数量",
+      "table_validators_hosts": "参与最近一次 PoC 的所有主机列表",
+      "table_voting_power": "计算能力的通用单位",
+      "table_24h_changes": "过去 24 小时内权重的变化（相较最近的 PoC 阶段）",
+      "table_earned": "当前 epoch 中每位主机/验证者获得的奖励。",
+      "table_active": "每位主机积极参与的天数",
+      "table_reputation": "基于诚实度和工作质量对每位主机/验证者的评分",
+      "table_missed_blocks": "主机未能出块或验证的区块数量",
+      "table_uptime": "主机服务器保持在线的时间百分比。"
+    }
   },
   "statesync": {
     "title": "What's State Sync?",
@@ -305,8 +322,8 @@
   },
   "developer": {
     "monthly_tokens": "月度代币",
-    "global_users": "全球用户",
-    "active_providers": "活跃提供商",
+    "global_users": "开发者数量",
+    "active_providers": "活跃主机/验证者数量",
     "models": "模型",
     "throughput": "吞吐量",
     "developers": "开发者",
@@ -318,7 +335,14 @@
     "last_active": "最后活跃",
     "active_developers": "活跃开发者",
     "inactive_developers": "非活跃开发者",
-    "description": "开发者活动和项目统计"
+    "description": "开发者活动和项目统计",
+    "hints": {
+      "ai_tokens_last_week": "过去七个 epoch 期间处理的输入与输出 AI 代币总量",
+      "global_users": "在 Gonka 去中心化网络中构建并部署 AI 应用的开发者数量",
+      "active_providers": "通过最新 PoC 且当前在网络中活跃的主机/验证者数量",
+      "models": "当前在网络中注册的 LLM 模型数量",
+      "throughput": "所有活跃主机/验证者的计算能力"
+    }
   },
   "inference": {
     "inferences_today": "推理 (今日)",
@@ -334,6 +358,12 @@
     "max_throughput": "最大吞吐量",
     "latency": "延迟",
     "no_models": "暂无可用模型",
-    "performance_chart_placeholder": "性能图表将在此显示"
+    "performance_chart_placeholder": "性能图表将在此显示",
+    "hints": {
+      "inferences_today": "当前一天内网络处理的推理请求总数",
+      "inferences_last_week": "过去 7 个 epoch（一周）内处理的推理请求总数",
+      "ai_tokens_today": "当前一天推理请求中处理的输入与输出 AI 代币总量",
+      "ai_tokens_last_week": "过去 7 个 epoch（一周）内推理请求中处理的输入与输出 AI 代币总量"
+    }
   }
 }

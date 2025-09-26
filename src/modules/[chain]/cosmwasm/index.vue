@@ -104,6 +104,7 @@ function gotoHistory() {
     {
       meta: {
         i18n: 'cosmwasm'
+        order: 9
       }
     }
 </route>

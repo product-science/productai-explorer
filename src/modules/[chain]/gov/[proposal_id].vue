@@ -9,6 +9,7 @@ import {
   useGovStore,
   useStakingStore,
   useTxDialog,
+  useValidatorStore,
 } from '@/stores';
 import {
   PageRequest,
@@ -30,6 +31,7 @@ const store = useGovStore();
 const dialog = useTxDialog();
 const stakingStore = useStakingStore();
 const chainStore = useBlockchain();
+const validatorStore = useValidatorStore();
 
 store.fetchProposal(props.proposal_id).then((res) => {
   let proposalDetail = reactive(res.proposal);
@@ -38,6 +40,8 @@ store.fetchProposal(props.proposal_id).then((res) => {
     store.fetchTally(props.proposal_id).then((tallRes) => {
       proposalDetail.final_tally_result = tallRes?.tally;
     });
+    // Ensure validator store is initialized so active participants and validators are available
+    validatorStore.init();
   }
   proposal.value = proposalDetail;
   // load origin params if the proposal is param change
@@ -98,6 +102,11 @@ const status = computed(() => {
   return '';
 });
 
+const isFinalized = computed(() => {
+  const s = proposal.value.status || '';
+  return s === 'PROPOSAL_STATUS_PASSED' || s === 'PROPOSAL_STATUS_REJECTED';
+});
+
 const deposit = ref({} as PaginatedProposalDeposit);
 store.fetchProposalDeposits(props.proposal_id).then((x) => (deposit.value = x));
 
@@ -144,56 +153,73 @@ const total = computed(() => {
     sum += Number(tally.no || 0);
     sum += Number(tally.no_with_veto || 0);
   }
+  console.log('total', sum);
   return sum;
 });
 
+// Denominator: during voting -> sum(staking tokens of active participants); after finalized -> sum of tally
+const denominator = computed<number>(() => {
+  const status = proposal.value.status || '';
+  if (status === 'PROPOSAL_STATUS_VOTING_PERIOD') {
+    return Number(validatorStore.activeStakingTotal || 0);
+  }
+  return total.value || 0;
+});
+
 const turnout = computed(() => {
-  if (total.value > 0) {
-    const bonded = stakingStore.pool?.bonded_tokens || '1';
-    return format.percent(total.value / Number(bonded));
+  const denom = denominator.value;
+  if (denom > 0) {
+    return format.percent(total.value / denom);
   }
   return 0;
 });
 
 const yes = computed(() => {
-  if (total.value > 0) {
-    const yes = proposal.value?.final_tally_result?.yes || 0;
-    return format.percent(Number(yes) / total.value);
+  const denom = denominator.value;
+  if (denom > 0) {
+    const yes = Number(proposal.value?.final_tally_result?.yes || 0);
+    return format.percent(yes / denom);
   }
   return 0;
 });
 
 const no = computed(() => {
-  if (total.value > 0) {
-    const value = proposal.value?.final_tally_result?.no || 0;
-    return format.percent(Number(value) / total.value);
+  const denom = denominator.value;
+  if (denom > 0) {
+    const value = Number(proposal.value?.final_tally_result?.no || 0);
+    return format.percent(value / denom);
   }
   return 0;
 });
 
 const veto = computed(() => {
-  if (total.value > 0) {
-    const value = proposal.value?.final_tally_result?.no_with_veto || 0;
-    return format.percent(Number(value) / total.value);
+  const denom = denominator.value;
+  if (denom > 0) {
+    const value = Number(proposal.value?.final_tally_result?.no_with_veto || 0);
+    return format.percent(value / denom);
   }
   return 0;
 });
 
 const abstain = computed(() => {
-  if (total.value > 0) {
-    const value = proposal.value?.final_tally_result?.abstain || 0;
-    return format.percent(Number(value) / total.value);
+  const denom = denominator.value;
+  if (denom > 0) {
+    const value = Number(proposal.value?.final_tally_result?.abstain || 0);
+    return format.percent(value / denom);
   }
   return 0;
 });
 const processList = computed(() => {
-  return [
-    { name: 'Turnout', value: turnout.value, class: 'bg-info' },
+  const list = [
     { name: 'Yes', value: yes.value, class: 'bg-success' },
     { name: 'No', value: no.value, class: 'bg-error' },
     { name: 'No With Veto', value: veto.value, class: 'bg-red-800' },
     { name: 'Abstain', value: abstain.value, class: 'bg-warning' },
   ];
+  if (!isFinalized.value) {
+    list.unshift({ name: 'Turnout', value: turnout.value, class: 'bg-info' });
+  }
+  return list;
 });
 
 function showValidatorName(voter: string) {
@@ -392,7 +418,7 @@ function metaItem(metadata: string|undefined): { title: string; summary: string 
       </div>
     </div>
 
-    <div class="bg-base-100 px-4 pt-3 pb-4 rounded mb-4 shadow">
+    <div class="bg-base-100 px-4 pt-3 pb-4 rounded mb-4 shadow" v-if="!isFinalized">
       <h2 class="card-title">{{ $t('gov.votes') }}</h2>
       <div class="overflow-x-auto">
         <table class="table w-full table-zebra">

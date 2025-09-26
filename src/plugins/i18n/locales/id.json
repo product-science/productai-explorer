@@ -191,6 +191,7 @@
       "active": "Aktif",
       "inactive": "Tidak Aktif",
       "rank": "Peringkat",
+      "next_poc": "PoC Berikutnya",
       "validator": "Validator",
       "voting_power": "Kekuatan Suara",
       "24h_changes": "Perubahan 24 Jam",
@@ -225,11 +226,27 @@
       "final_reward": "Hadiah Akhir",
       "earned_reward": "Hadiah yang Diperoleh",
       "validators": "Validator",
+      "validators_hosts": "Validator/Host",
       "earned": "Diperoleh",
       "active": "Aktif",
       "reputation": "Reputasi",
       "missed_blocks": "Blok Terlewat",
-      "uptime": "Waktu Aktif"
+      "uptime": "Waktu Aktif",
+      "hints": {
+        "next_poc": "Sisa waktu hingga siklus Proof of Compute berikutnya",
+        "total_power": "Kapasitas komputasi semua Host/Validator yang aktif",
+        "final_reward": "Total hadiah yang diperoleh pada epoch terakhir (dalam koin)",
+        "earned_reward": "Total hadiah yang terakumulasi oleh semua Host/Validator pada epoch saat ini",
+        "validators": "Jumlah Host/Validator yang lulus PoC terbaru dan saat ini aktif di jaringan",
+        "table_validators_hosts": "Daftar semua Host yang berpartisipasi dalam PoC terbaru",
+        "table_voting_power": "Satuan universal untuk kapasitas komputasi",
+        "table_24h_changes": "Perubahan Voting Power selama 24 jam terakhir (dibandingkan fase PoC terbaru)",
+        "table_earned": "Hadiah yang diperoleh setiap Host/Validator pada epoch saat ini.",
+        "table_active": "Jumlah hari setiap Host berpartisipasi secara aktif",
+        "table_reputation": "Skor setiap Host/Validator berdasarkan kejujuran dan kualitas pekerjaan",
+        "table_missed_blocks": "Jumlah blok yang gagal diproduksi atau divalidasi oleh Host",
+        "table_uptime": "Persentase waktu server Host aktif."
+      }
     },
     "statesync": {
       "title": "Apa itu State Sync?",
@@ -303,8 +320,8 @@
     },
     "developer": {
       "monthly_tokens": "Token Bulanan",
-      "global_users": "Pengguna Global",
-      "active_providers": "Penyedia Aktif",
+      "global_users": "Jumlah Pengembang",
+      "active_providers": "Jumlah Host/Validator aktif",
       "models": "Model",
       "throughput": "Throughput",
       "developers": "Pengembang",
@@ -316,7 +333,14 @@
       "last_active": "Terakhir Aktif",
       "active_developers": "Pengembang Aktif",
       "inactive_developers": "Pengembang Tidak Aktif",
-      "description": "Statistik aktivitas pengembang dan proyek"
+      "description": "Statistik aktivitas pengembang dan proyek",
+      "hints": {
+        "ai_tokens_last_week": "Total token AI input dan output yang diproses selama tujuh epoch terakhir.",
+        "global_users": "Jumlah pengembang yang membangun dan menerapkan aplikasi AI di jaringan terdesentralisasi Gonka",
+        "active_providers": "Jumlah Host/Validator yang lulus PoC terbaru dan saat ini aktif di jaringan",
+        "models": "Jumlah model LLM yang saat ini terdaftar di jaringan",
+        "throughput": "Kapasitas komputasi semua Host/Validator yang aktif"
+      }
     },
     "inference": {
       "inferences_today": "Inferensi (Hari Ini)",
@@ -332,6 +356,12 @@
       "max_throughput": "Throughput Maksimal",
       "latency": "Latensi",
       "no_models": "Tidak ada model tersedia",
-      "performance_chart_placeholder": "Grafik performa akan ditampilkan di sini"
+      "performance_chart_placeholder": "Grafik performa akan ditampilkan di sini",
+      "hints": {
+        "inferences_today": "Jumlah total permintaan inferensi yang diproses jaringan pada hari ini.",
+        "inferences_last_week": "Jumlah total permintaan inferensi yang diproses selama 7 epoch terakhir (satu minggu).",
+        "ai_tokens_today": "Total token AI input dan output yang diproses dalam permintaan inferensi pada hari ini.",
+        "ai_tokens_last_week": "Total token AI input dan output yang diproses dalam permintaan inferensi selama 7 epoch terakhir (satu minggu)."
+      }
     }
 }

@@ -3,6 +3,7 @@ import {
   useBlockchain,
   useFormatter,
   useStakingStore,
+  useValidatorStore,
 } from '@/stores';
 import { onMounted, computed, ref } from 'vue';
 import { Icon } from '@iconify/vue';
@@ -16,12 +17,14 @@ import { type PaginatedTxs, type Validator } from '@/types';
 const props = defineProps(['validator', 'chain']);
 
 const staking = useStakingStore();
+const validatorStore = useValidatorStore();
 const blockchain = useBlockchain();
 const format = useFormatter();
 
 const validator: string = props.validator;
 
 const v = ref({} as Validator);
+const chain = props.chain as string;
 const addresses = ref(
   {} as {
     account: string;
@@ -55,8 +58,19 @@ onMounted(() => {
   }
 });
 
+// Identity and avatar utilities
+const identity = computed(() => String(v.value?.description?.identity || ''));
+const avatars = computed<Record<string, string>>(() => validatorStore.avatars || {});
+function logo(keySuffix?: string): string {
+  if (!keySuffix) return '';
+  return validatorStore.getAvatarUrl(keySuffix) || '';
+}
+function loadAvatar(keySuffix?: string) {
+  if (keySuffix) validatorStore.fetchAvatar(keySuffix);
+}
+
 let showCopyToast = ref(0);
-const copyWebsite = async (url: string) => {
+const copyAddress = async (url: string) => {
   if (!url) {
     return;
   }
@@ -67,7 +81,25 @@ const copyWebsite = async (url: string) => {
       showCopyToast.value = 0;
     }, 1000);
   } catch (err) {
-    showCopyToast.value = 2;
+    // Using old execCommand copy method, works even on non-secure dashboards
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = url;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'absolute';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (successful) {
+        showCopyToast.value = 1;
+      } else {
+        showCopyToast.value = 2;
+      }
+    } catch (e) {
+      showCopyToast.value = 2;
+    }
     setTimeout(() => {
       showCopyToast.value = 0;
     }, 1000);
@@ -84,7 +116,84 @@ const tipMsg = computed(() => {
 
 <template>
   <div>
-    <div class="mt-3 grid grid-cols-1 md:!grid-cols-1 gap-4">
+    <div class="mt-3 grid grid-cols-1 md:!grid-cols-2 gap-4">
+      <div class="bg-base-100 px-4 pt-3 pb-4 rounded shadow border-indigo-500">
+        <div class="flex flex-col lg:!flex-row pt-2 pb-1">
+          <div class="flex-1">
+            <div class="flex">
+              <div class="avatar mr-4 relative w-24 rounded-lg overflow-hidden">
+                <div class="w-24 rounded-lg absolute opacity-10"></div>
+                <div class="w-24 rounded-lg">
+                  <img
+                    v-if="identity && avatars[identity] !== 'undefined'"
+                    v-lazy="logo(identity)"
+                    class="object-contain"
+                    @error="
+                      (e) => {
+                        loadAvatar(identity);
+                      }
+                    "
+                  />
+                  <Icon v-else class="text-8xl" :icon="`mdi-help-circle-outline`" />
+                </div>
+              </div>
+              <div class="mx-2">
+                <h4>{{ v.description?.moniker }}</h4>
+                <div class="text-sm mb-4">
+                  {{ v.description?.identity || '-' }}
+                </div>
+              </div>
+            </div>
+            <div class="mt-4 text-sm">
+              <p class="text-sm mb-3 font-medium">{{ $t('validator.about_us') }}</p>
+              <div class="card-list">
+                <div class="flex items-center mb-2">
+                  <Icon icon="mdi-web" class="text-xl mr-1" />
+                  <span class="font-bold mr-2"
+                    >{{ $t('validator.website') }}:
+                  </span>
+                  <a
+                    :href="v?.description?.website || '#'"
+                    :class="v?.description?.website ? 'cursor-pointer' : 'cursor-default'"
+                  >
+                    {{ v.description?.website || '-' }}
+                  </a>
+                </div>
+                <div class="flex items-center">
+                  <Icon icon="mdi-email-outline" class="text-xl mr-1" />
+                  <span class="font-bold mr-2"
+                    >{{ $t('validator.contact') }}:
+                  </span>
+                  <a
+                    v-if="v.description?.security_contact"
+                    :href="'mailto:' + v.description.security_contact || '#'"
+                    class="cursor-pointer"
+                  >
+                    {{ v.description?.security_contact || '-' }}
+                  </a>
+                </div>
+              </div>
+              <p class="text-sm mt-4 mb-3 font-medium">
+                {{ $t('validator.validator_status') }}
+              </p>
+              <div class="card-list">
+                <div class="flex items-center mb-2">
+                  <Icon icon="mdi-shield-account-outline" class="text-xl mr-1" />
+                  <span class="font-bold mr-2">{{ $t('validator.status') }}: </span
+                  ><span>
+                    {{ String(v.status).replace('BOND_STATUS_', '') }}
+                  </span>
+                </div>
+                <div class="flex items-center">
+                  <Icon icon="mdi-shield-alert-outline" class="text-xl mr-1" />
+                  <span class="font-bold mr-2">{{ $t('validator.jailed') }}: </span>
+                  <span> {{ v.jailed || '-' }} </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="bg-base-100 rounded shadow overflow-x-auto">
         <div class="px-4 pt-4 mb-2 text-main font-lg font-semibold">
           {{ $t('validator.addresses') }}
@@ -96,7 +205,7 @@ const tipMsg = computed(() => {
                   icon="mdi:content-copy"
                   class="ml-2 cursor-pointer"
                   v-show="addresses.account"
-                  @click="copyWebsite(addresses.account || '')"
+                  @click="copyAddress(addresses.account || '')"
                 />
               </div>
             <RouterLink
@@ -112,7 +221,7 @@ const tipMsg = computed(() => {
                   icon="mdi:content-copy"
                   class="ml-2 cursor-pointer"
                   v-show="v.operator_address"
-                  @click="copyWebsite(v.operator_address || '')"
+                  @click="copyAddress(v.operator_address || '')"
                 /></div>
             <div class="text-xs">
               {{ v.operator_address }}
@@ -124,7 +233,7 @@ const tipMsg = computed(() => {
                   icon="mdi:content-copy"
                   class="ml-2 cursor-pointer"
                   v-show="addresses.hex"
-                  @click="copyWebsite(addresses.hex || '')"
+                  @click="copyAddress(addresses.hex || '')"
                 />
               </div>
             <div class="text-xs">{{ addresses.hex }}</div>
@@ -135,7 +244,7 @@ const tipMsg = computed(() => {
                   icon="mdi:content-copy"
                   class="ml-2 cursor-pointer"
                   v-show="addresses.valCons"
-                  @click="copyWebsite(addresses.valCons || '')"
+                  @click="copyAddress(addresses.valCons || '')"
                 />
               </div>
             <div class="text-xs">{{ addresses.valCons }}</div>
@@ -146,7 +255,7 @@ const tipMsg = computed(() => {
                   icon="mdi:content-copy"
                   class="ml-2 cursor-pointer"
                   v-show="v.consensus_pubkey"
-                  @click="copyWebsite(JSON.stringify(v.consensus_pubkey) || '')"
+                  @click="copyAddress(JSON.stringify(v.consensus_pubkey) || '')"
                 />
               </div>
             <div class="text-xs">{{ v.consensus_pubkey }}</div>

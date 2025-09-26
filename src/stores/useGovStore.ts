@@ -8,6 +8,7 @@ import { reactive } from 'vue';
 export const useGovStore = defineStore('govStore', {
   state: () => {
     return {
+      chainName: '' as string,
       params: {
         deposit: {},
         voting: {},
@@ -27,7 +28,15 @@ export const useGovStore = defineStore('govStore', {
   },
   actions: {
     initial() {
+      console.log('gov store initial');
+      const current = this.blockchain.chainName;
+      // If already initialized for this chain, avoid resetting/fetching again
+      if (this.chainName === current && current) {
+        return;
+      }
+      // Reset only when switching to a new chain
       this.$reset();
+      this.chainName = current;
       this.fetchParams();
       this.fetchProposals('2');
     },

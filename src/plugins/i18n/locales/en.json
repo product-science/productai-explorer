@@ -204,6 +204,7 @@
     "active": "Active",
     "inactive": "Inactive",
     "rank": "Rank",
+    "next_poc": "Next PoC",
     "validator": "Validator",
     "voting_power": "Voting Power",
     "24h_changes": "24h Changes",
@@ -234,15 +235,30 @@
     "liquid_staking": "Liquid Staking",
     "liquid_staking_shares":"Liquid Shares",
     "validator_bond_share":"Validator Bonded",
-    "total_power": "Total Power",
+    "total_power": "Total Voting Power",
     "final_reward": "Final Reward",
     "earned_reward": "Earned Reward",
     "validators": "Validators",
+    "validators_hosts": "Validators/Hosts",
     "earned": "Earned",
-    "active": "Active",
     "reputation": "Reputation",
     "missed_blocks": "Missed Blocks",
-    "uptime": "Uptime"
+    "uptime": "Uptime",
+    "hints": {
+      "next_poc": "Time left until the next Proof of Compute cycle",
+      "total_power": "Computational capacity of all active Hosts/Validators",
+      "final_reward": "Total rewards earned in the last epoch (in coins)",
+      "earned_reward": "Total rewards accumulated by all Hosts/Validators in the current epoch",
+      "validators": "Number of Hosts/Validators that passed the latest PoC and are currently active in the network",
+      "table_validators_hosts": "List of all Hosts that participated in the latest PoC",
+      "table_voting_power": "A universal unit of compute capacity",
+      "table_24h_changes": "Change of Voting Power over the last 24 hours (compared to the most recent PoC phase)",
+      "table_earned": "Rewards earned by each Host/Validator in the current epoch.",
+      "table_active": "Number of days each Host has been actively participating",
+      "table_reputation": "Score of each Host/Validator based on the honesty and quality of work performed",
+      "table_missed_blocks": "Number of blocks a Host failed to produce or validate",
+      "table_uptime": "Percentage of time a Host’s servers were active."
+    }
   },
   "statesync": {
     "title": "What's State Sync?",
@@ -316,8 +332,8 @@
   },
   "developer": {
     "monthly_tokens": "Monthly Tokens",
-    "global_users": "Global Users",
-    "active_providers": "Active Providers",
+    "global_users": "Number of Developers",
+    "active_providers": "Number of active Hosts/Validators",
     "models": "Models",
     "throughput": "Throughput",
     "developers": "Developers",
@@ -350,7 +366,14 @@
     "stable_coin": "Stable Coin",
     "token": "Token",
     "swap_success": "Swap completed successfully!",
-    "swap_processing": "Processing swap..."
+    "swap_processing": "Processing swap...",
+    "hints": {
+      "ai_tokens_last_week": "Total input and output AI tokens processed across the last seven epochs.",
+      "global_users": "The number of developers building and deploying AI applications within the Gonka decentralized network",
+      "active_providers": "Number of Hosts/Validators that passed the latest PoC and are currently active in the network",
+      "models": "Number of LLM models currently registered in the network",
+      "throughput": "Computational capacity of all active Hosts/Validators"
+    }
   },
   "inference": {
     "inferences_today": "Inferences (Today)",
@@ -366,6 +389,12 @@
     "max_throughput": "Max Throughput",
     "latency": "Latency",
     "no_models": "No models available",
-    "performance_chart_placeholder": "Performance chart will be displayed here"
+    "performance_chart_placeholder": "Performance chart will be displayed here",
+    "hints": {
+      "inferences_today": "Total number of inference requests processed by the network during the current day.",
+      "inferences_last_week": "Total number of inference requests processed over the last 7 epochs (one week).",
+      "ai_tokens_today": "Total input and output AI tokens processed in inference requests during the current day.",
+      "ai_tokens_last_week": "Total input and output AI tokens processed in inference requests over the last 7 epochs (one week)."
+    }
   }
 }

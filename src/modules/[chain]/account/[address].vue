@@ -154,9 +154,47 @@ function mapVestingRewardAmount(events: {type: string, attributes: {key: string,
   const decodeKey = (k: string) => (k === 'YW1vdW50' ? 'amount' : k)
   const evt = events.find(x => x.type === 'vest_reward')
   if (!evt) return []
-  return evt.attributes
+  // Parse cosmos amount strings like "12345ngonka,6789ugonka" and format to display denom
+  const values: string[] = []
+  evt.attributes
     .filter(x => decodeKey(x.key) === 'amount')
-    .map(x => x.value)
+    .forEach(x => {
+      const parts = (x.value || '').split(',').map(p => p.trim()).filter(Boolean)
+      parts.forEach(p => {
+        const m = p.match(/^(\d+)([a-zA-Z][\w\/-]*)$/)
+        if (m) {
+          const amount = m[1]
+          const denom = m[2]
+          values.push(format.formatToken({ amount, denom }, true, '0,0.[00]'))
+        } else {
+          // Fallback: return raw part
+          values.push(p)
+        }
+      })
+    })
+  return values
+}
+
+function getEpochIndexFromTx(v: TxResponse): string {
+  try {
+    const msgs: any[] = (v as any)?.tx?.body?.messages || []
+    for (const msg of msgs) {
+      const type = msg['@type'] || msg.typeUrl || ''
+      if (type === '/cosmos.authz.v1beta1.MsgExec' && Array.isArray(msg.msgs)) {
+        for (const inner of msg.msgs) {
+          const itype = inner['@type'] || inner.typeUrl || ''
+          if (itype.includes('MsgClaimRewards') && inner.epoch_index != null) {
+            return String(inner.epoch_index)
+          }
+        }
+      } else if (type.includes('MsgClaimRewards') && msg.epoch_index != null) {
+        return String(msg.epoch_index)
+      }
+    }
+  } catch (e) {
+    // ignore parsing errors and fallback below
+  }
+  return '-'
 }
 
 function getStatusColor(status: string) {
@@ -490,6 +528,7 @@ function refreshSeriesColors(){
         <table class="table w-full text-sm">
           <thead>
             <tr>
+              <th class="py-3">Epoch</th>
               <th class="py-3">{{ $t('account.height') }}</th>
               <th class="py-3">{{ $t('account.hash') }}</th>
               <th class="py-3">{{ $t('account.amount') }}</th>
@@ -498,6 +537,9 @@ function refreshSeriesColors(){
           <tbody class="text-sm">
             <tr v-if="vestingRewardsTxs.length === 0"><td colspan="10"><div class="text-center">{{ $t('account.no_transactions') }}</div></td></tr>
             <tr v-for="(v, index) in vestingRewardsTxs" :key="index">
+              <td class="text-sm py-3">
+                {{ getEpochIndexFromTx(v) }}
+              </td>
               <td class="text-sm py-3">
                 <RouterLink :to="`/${chain}/block/${v.height}`" class="text-primary dark:invert">{{
                   v.height

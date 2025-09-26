@@ -25,13 +25,11 @@ const dialog = useTxDialog();
 const chainStore = useBlockchain();
 const mintStore = useMintStore()
 
-const cache = JSON.parse(localStorage.getItem('avatars') || '{}');
-const avatars = ref(cache || {});
-const latest = ref({} as Record<string, number>);
-const yesterday = ref({} as Record<string, number>);
+// Remove old local power-change calculation; now handled in store
 const tab = ref('active');
 const unbondList = ref([] as Validator[]);
 const slashing = ref({} as SlashingParam)
+const isHoveringNext = ref(false)
 
 // Next PoC mini widget state - now using store
 const currentHeight = computed(() => Number(base.latest?.block?.header?.height || 0))
@@ -46,9 +44,10 @@ const pocEstimateMs = computed(() => {
 const pocRemainingBlocksDisplay = computed(() => pocRemainingBlocks.value.toString())
 
 // Sorting state
-const sortBy = ref<'rank' | 'validator' | 'voting_power' | 'change24' | 'earned' | 'active' | 'reputation' | 'missed' | 'uptime'>(
-  (localStorage.getItem('validator-sort-by') as any) || 'rank'
-)
+type SortKey = 'validator' | 'voting_power' | 'change24' | 'earned' | 'active' | 'reputation' | 'missed' | 'uptime'
+const storedSortRaw = localStorage.getItem('validator-sort-by') as any
+const initialSortKey: SortKey = (storedSortRaw === 'rank' ? 'voting_power' : storedSortRaw) || 'voting_power'
+const sortBy = ref<SortKey>(initialSortKey)
 const sortDesc = ref(localStorage.getItem('validator-sort-desc') === 'true')
 
 function toggleSort(key: typeof sortBy.value) {
@@ -137,17 +136,17 @@ function formatUptime(validatorAddress: string): string {
 
 // Helper function to get base64 address from operator address
 function getValidatorBase64AddressFromOperator(operatorAddress: string): string {
-    const validator = validatorStore.validators.find(v => v.operator_address === operatorAddress);
+    const validator = validatorStore.participantsStakingData.find(v => v.operator_address === operatorAddress);
     if (!validator) return '';
     return getValidatorBase64Address(validator);
 }
 
-onMounted(() => {
+onMounted(async () => {
     validatorStore.fetchUnbondingValidators().then((res) => {
-        unbondList.value = res.concat(unbondList.value);
+        //unbondList.value = res.concat(unbondList.value);
     });
     validatorStore.fetchInactiveValidators().then((res) => {
-        unbondList.value = unbondList.value.concat(res);
+        //unbondList.value = unbondList.value.concat(res);
     });
     chainStore.rpc.getSlashingParams().then(res => {
         slashing.value = res.params
@@ -159,94 +158,30 @@ onMounted(() => {
     // Fetch initial slashing signing info
     updateSlashingSigningInfo();
 
-    // Fetch latest epoch info for Next PoC widget
-    chainStore.fetchLatestEpochInfo();
+    // Ensure epoch info is loaded for store power-change calculations
+    await chainStore.fetchLatestEpochInfo();
+    await validatorStore.fetchPreviousEpochParticipants();
 });
 
-async function fetchVotingPowerChange(blockWindow: number = 14400) {
-  let page = 0;
-
-  let height = Number(base.latest?.block?.header?.height || 0);
-
-  if (height > blockWindow) {
-    height -= blockWindow;
-  } else {
-    height = 1;
-  }
-
-  // voting power 24h ago
-  while (page < validatorStore.validators.length && height > 0) {
-    await base.fetchValidatorByHeight(height, page).then((x) => {
-      x.validators.forEach((v) => {
-        const power = Number(v.voting_power);
-        const key = v.pub_key.key;
-        yesterday.value[key] = power;
-      });
-    });
-    page += 100;
-  }
-
-  page = 0;
-
-  // voting power now
-  while (page < validatorStore.validators.length) {
-    await base.fetchLatestValidators(page).then((x) => {
-      x.validators.forEach((v) => {
-        const power = Number(v.voting_power);
-        const key = v.pub_key.key;
-        latest.value[key] = power;
-      });
-    });
-    page += 100;
-  }
-}
-
-const votingPowerChanges = computed(() => {
-    const changes = {} as Record<string, number>;
-    Object.keys(latest.value).forEach((k) => {
-        const l = latest.value[k] || 0;
-        const y = yesterday.value[k] || 0;
-        changes[k] = l - y;
-    });
-    return changes;
-});
-
-const votingPowerChange24 = (entry: { consensus_pubkey: Key; }) => {
-    const txt = entry.consensus_pubkey.key;
-    // Show raw voting power change from validatorset snapshots
-    const diff = votingPowerChanges.value[txt];
-    return typeof diff === 'number' ? diff : 0;
+const votingPowerChange24 = (entry: { operator_address: string; }) => {
+    const dv = validatorStore.getVotingPowerChange24(entry.operator_address);
+    return typeof dv === 'number' ? dv : 0;
 };
 
-const votingPowerChange24Text = (entry: { consensus_pubkey: Key; }) => {
+const votingPowerChange24Text = (entry: { operator_address: string; }) => {
     if (!entry) return '';
     const v = votingPowerChange24(entry);
     return v && v !== 0 ? format.showChanges(v) : '';
 };
 
-const votingPowerChange24Color = (entry: { consensus_pubkey: Key; }) => {
+const votingPowerChange24Color = (entry: { operator_address: string; }) => {
     if (!entry) return '';
     const v = votingPowerChange24(entry);
     if (v > 0) return 'text-success';
     if (v < 0) return 'text-error';
 };
 
-const calculateRank = function (position: number) {
-    let sum = 0;
-    for (let i = 0; i < position; i++) {
-        sum += Number(validatorStore.validators[i]?.delegator_shares);
-    }
-    const percent = sum / Number(validatorStore.totalPower);
-
-    switch (true) {
-        case tab.value === 'active' && percent < 0.33:
-            return 'error';
-        case tab.value === 'active' && percent < 0.67:
-            return 'warning';
-        default:
-            return 'primary';
-    }
-};
+// Removed rank calculation and display
 
 function isFeatured(endpoints: string[], who?: {website?: string, moniker: string }) {
     if(!endpoints || !who) return false
@@ -254,23 +189,36 @@ function isFeatured(endpoints: string[], who?: {website?: string, moniker: strin
 }
 
 const list = computed(() => {
-    let base: { v: any; rank: string; logo: string; pos: number }[] = []
+    let base: { v: any; logo: string }[] = []
     if (tab.value === 'active') {
-        base = validatorStore.validators.map((x, i) => ({ v: x, rank: calculateRank(i), logo: logo(x.description.identity), pos: i }))
+        // Only show validators that are active participants in the current epoch
+        const filtered = validatorStore.participantsStakingData
+            .filter(x => {
+                const p = validatorStore.getParticipant(x.operator_address)
+                return !!p && Number(p.weight || 0) > 0
+            })
+
+        base = filtered.map((x) => ({ 
+            v: x, 
+            logo: validatorStore.getAvatarUrl(x.description.identity)
+        }))
     } else if (tab.value === 'featured') {
         const endpoint = chainStore.current?.endpoints?.rest?.map(x => x.provider)
         if (endpoint) {
             endpoint.push('ping')
-            base = validatorStore.validators
+            base = validatorStore.participantsStakingData
                 .filter(x => isFeatured(endpoint, x.description))
-                .map((x) => ({ v: x, rank: 'primary', logo: logo(x.description.identity), pos: validatorStore.validators.findIndex(v => v.operator_address === x.operator_address) }))
+                .map((x) => ({ 
+                    v: x, 
+                    logo: validatorStore.getAvatarUrl(x.description.identity)
+                }))
         }
     } else {
-        base = unbondList.value.map((x, i) => ({ v: x, rank: 'primary', logo: logo(x.description.identity), pos: i }))
+        base = unbondList.value.map((x) => ({ 
+            v: x, 
+            logo: validatorStore.getAvatarUrl(x.description.identity)
+        }))
     }
-
-    // Rank preserves original ordering
-    if (sortBy.value === 'rank') return base
 
     const getValue = (entry: { v: any }) => {
         const val = entry.v
@@ -278,7 +226,7 @@ const list = computed(() => {
             case 'validator':
                 return String(val.description?.moniker || '').toLowerCase()
             case 'voting_power':
-                return Number(val.tokens || 0)
+                return Number(validatorStore.getParticipant(val.operator_address)?.weight || 0)
             case 'change24':
                 return Number(votingPowerChange24(val) || 0)
             case 'earned':
@@ -307,69 +255,11 @@ const list = computed(() => {
     })
 })
 
-const fetchAvatar = (identity: string) => {
-  // fetch avatar from keybase
-  return new Promise<void>((resolve) => {
-    validatorStore
-      .keybase(identity)
-      .then((d) => {
-        if (Array.isArray(d.them) && d.them.length > 0) {
-          const uri = String(d.them[0]?.pictures?.primary?.url).replace(
-            'https://s3.amazonaws.com/keybase_processed_uploads/',
-            ''
-          );
-
-          avatars.value[identity] = uri;
-          resolve();
-        } else throw new Error(`failed to fetch avatar for ${identity}`);
-      })
-      .catch((error) => {
-        // console.error(error); // uncomment this if you want the user to see which avatars failed to load.
-        resolve();
-      });
-  });
-};
-
-const loadAvatar = (identity: string) => {
-  // fetches avatar from keybase and stores it in localStorage
-  fetchAvatar(identity).then(() => {
-    localStorage.setItem('avatars', JSON.stringify(avatars.value));
-  });
-};
-
-const loadAvatars = () => {
-  // fetches all avatars from keybase and stores it in localStorage
-  const promises = validatorStore.validators.map((validator) => {
-    const identity = validator.description?.identity;
-
-    // Here we also check whether we haven't already fetched the avatar
-    if (identity && !avatars.value[identity]) {
-      return fetchAvatar(identity);
-    } else {
-      return Promise.resolve();
-    }
-  });
-
-  Promise.all(promises).then(() =>
-    localStorage.setItem('avatars', JSON.stringify(avatars.value))
-  );
-};
-
-const logo = (identity?: string) => {
-    if (!identity || !avatars.value[identity]) return '';
-    const url = avatars.value[identity] || '';
-    return url.startsWith('http')
-        ? url
-        : `https://s3.amazonaws.com/keybase_processed_uploads/${url}`;
-};
-
 const loaded = ref(false);
 base.$subscribe((_, s) => {
-    if (s.recents.length >= 2 && loaded.value === false && validatorStore.validators.length > 0) {
-        const diff_time = Date.parse(s.recents[1].block.header.time) - Date.parse(s.recents[0].block.header.time)
-        const diff_height = Number(s.recents[1].block.header.height) - Number(s.recents[0].block.header.height)
-        const block_window = Number(Number(86400 * 1000 * diff_height / diff_time).toFixed(0))
-        fetchVotingPowerChange(block_window).finally(() => { loaded.value = true })
+    if (s.recents.length >= 2 && loaded.value === false && validatorStore.participantsStakingData.length > 0) {
+        // Once basic chain data loaded, ensure previous epoch participants are fetched
+        validatorStore.fetchPreviousEpochParticipants().finally(() => { loaded.value = true })
     }
     
     // Update slashing signing info every 7 blocks (similar to uptime module)
@@ -378,251 +268,225 @@ base.$subscribe((_, s) => {
         updateSlashingSigningInfo();
     }
 });
-
-loadAvatars();
 </script>
 <template>
 <div>
-  <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5 mt-4">
+  <div class="grid gap-4 grid-cols-[repeat(auto-fit,minmax(265px,1fr))] mt-4">
     <!-- Next PoC mini widget -->
-    <div class="bg-base-100 shadow rounded p-4">
-      <div class="flex items-center justify-center">
-        <div class="relative w-9 h-9 rounded overflow-hidden flex items-center justify-center">
-          <Icon class="text-primary" icon="mdi:flag-checkered" size="32" />
-          <div class="absolute top-0 left-0 bottom-0 right-0 opacity-20 bg-primary"></div>
-        </div>
-      </div>
-      <div class="mt-2">
-        <div class="flex items-center justify-center text-sm mt-2 mb-1">
+    <CardStatisticsVertical
+      :title="$t('validator.next_poc')"
+      icon="mdi:flag-checkered"
+      stats=""
+      color="primary"
+    >
+      <template #content>
+        <div class="flex items-center justify-center text-sm mb-1">
           <template v-if="pocEstimateMs > 0">
             <Countdown :time="pocEstimateMs" css="!text-base" :hideDays="true" :short="true" />
           </template>
           <template v-else>—</template>
         </div>
         <p class="text-sm text-center">Next PoC</p>
-      </div>
-    </div>
+      </template>
+      <template #hint>
+        <p class="text-sm text-center px-4">{{ $t('validator.hints.next_poc') }}</p>
+      </template>
+    </CardStatisticsVertical>
     <CardStatisticsVertical
       :title="$t('validator.total_power')"
       icon="mdi:lightning-bolt"
       :stats="validatorStore.displayTotalPower"
       color="primary"
+      :hint="$t('validator.hints.total_power')"
     />
     <CardStatisticsVertical
       :title="$t('validator.final_reward')"
       icon="mdi:gift"
       :stats="validatorStore.displayTotalFinalReward"
       color="success"
+      :hint="$t('validator.hints.final_reward')"
     />
     <CardStatisticsVertical
       :title="$t('validator.earned_reward')"
       icon="mdi:trending-up"
       :stats="validatorStore.displayTotalEarnedReward"
       color="warning"
+      :hint="$t('validator.hints.earned_reward')"
     />
     <CardStatisticsVertical
       :title="$t('validator.validators')"
       icon="mdi:account-group"
-      :stats="validatorStore.displayTotalValidators"
+      :stats="validatorStore.displayActiveProviders"
       color="info"
+      :hint="$t('validator.hints.validators')"
     />
   </div>
 
-  <div class="bg-base-100 rounded mt-4 shadow">
-    <div class="px-4 pt-4 pb-2 text-lg font-semibold text-main">
-      Validators
-    </div>
-    <div class="px-4 pb-4">
-      <div class="overflow-x-auto">
-        <table class="table validator-table w-full">
-          <thead class="bg-base-200">
-            <tr>
-              <th
-                scope="col"
-                class="uppercase cursor-pointer select-none"
-                style="width: 3rem; position: relative"
-                @click="toggleSort('rank')"
+  <div class="bg-base-100 rounded overflow-x-auto mt-4 shadow">
+    <div class="pb-4">
+      <table class="table validator-table w-full">
+        <thead class="bg-base-200">
+          <tr>
+            <th scope="col" class="uppercase cursor-pointer select-none sticky left-0 z-[2] bg-base-200 th-hover" @click="toggleSort('validator')" :title="$t('validator.hints.table_validators_hosts')">
+              <span class="inline-flex items-center">{{ $t('validator.validators_hosts') }}<Icon :icon="sortIcon('validator')" class="ml-1" /></span>
+            </th>
+            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('voting_power')" :title="$t('validator.hints.table_voting_power')">
+              <span class="inline-flex items-center justify-end w-full">{{ $t('validator.voting_power') }}<Icon :icon="sortIcon('voting_power')" class="ml-1" /></span>
+            </th>
+            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('change24')" :title="$t('validator.hints.table_24h_changes')">
+              <span class="inline-flex items-center justify-end w-full">{{ $t('validator.24h_changes') }}<Icon :icon="sortIcon('change24')" class="ml-1" /></span>
+            </th>
+            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('earned')" :title="$t('validator.hints.table_earned')">
+              <span class="inline-flex items-center justify-end w-full">{{ $t('validator.earned') }}<Icon :icon="sortIcon('earned')" class="ml-1" /></span>
+            </th>
+            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('active')" :title="$t('validator.hints.table_active')">
+              <span class="inline-flex items-center justify-end w-full">{{ $t('validator.active') }}<Icon :icon="sortIcon('active')" class="ml-1" /></span>
+            </th>
+            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('reputation')" :title="$t('validator.hints.table_reputation')">
+              <span class="inline-flex items-center justify-end w-full">{{ $t('validator.reputation') }}<Icon :icon="sortIcon('reputation')" class="ml-1" /></span>
+            </th>
+            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('missed')" :title="$t('validator.hints.table_missed_blocks')">
+              <span class="inline-flex items-center justify-end w-full">{{ $t('validator.missed_blocks') }}<Icon :icon="sortIcon('missed')" class="ml-1" /></span>
+            </th>
+            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('uptime')" :title="$t('validator.hints.table_uptime')">
+              <span class="inline-flex items-center justify-end w-full">{{ $t('validator.uptime') }}<Icon :icon="sortIcon('uptime')" class="ml-1" /></span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="({v, logo}, i) in list"
+            :key="v.operator_address"
+            class="hover:bg-gray-100 dark:hover:bg-[#384059]"
+          >
+            <!-- 👉 Validator -->
+            <td class="sticky left-0 z-[1] bg-base-100">
+              <div
+                class="flex items-center overflow-hidden"
               >
-                <span class="inline-flex items-center">{{ $t('validator.rank') }}<Icon :icon="sortIcon('rank')" class="ml-1" /></span>
-              </th>
-              <th scope="col" class="uppercase cursor-pointer select-none" @click="toggleSort('validator')">
-                <span class="inline-flex items-center">{{ $t('validator.validator') }}<Icon :icon="sortIcon('validator')" class="ml-1" /></span>
-              </th>
-              <th scope="col" class="text-right uppercase cursor-pointer select-none" @click="toggleSort('voting_power')">
-                <span class="inline-flex items-center justify-end w-full">{{ $t('validator.voting_power') }}<Icon :icon="sortIcon('voting_power')" class="ml-1" /></span>
-              </th>
-              <th scope="col" class="text-right uppercase cursor-pointer select-none" @click="toggleSort('change24')">
-                <span class="inline-flex items-center justify-end w-full">{{ $t('validator.24h_changes') }}<Icon :icon="sortIcon('change24')" class="ml-1" /></span>
-              </th>
-              <th scope="col" class="text-right uppercase cursor-pointer select-none" @click="toggleSort('earned')">
-                <span class="inline-flex items-center justify-end w-full">{{ $t('validator.earned') }}<Icon :icon="sortIcon('earned')" class="ml-1" /></span>
-              </th>
-              <th scope="col" class="text-right uppercase cursor-pointer select-none" @click="toggleSort('active')">
-                <span class="inline-flex items-center justify-end w-full">{{ $t('validator.active') }}<Icon :icon="sortIcon('active')" class="ml-1" /></span>
-              </th>
-              <th scope="col" class="text-right uppercase cursor-pointer select-none" @click="toggleSort('reputation')">
-                <span class="inline-flex items-center justify-end w-full">{{ $t('validator.reputation') }}<Icon :icon="sortIcon('reputation')" class="ml-1" /></span>
-              </th>
-              <th scope="col" class="text-right uppercase cursor-pointer select-none" @click="toggleSort('missed')">
-                <span class="inline-flex items-center justify-end w-full">{{ $t('validator.missed_blocks') }}<Icon :icon="sortIcon('missed')" class="ml-1" /></span>
-              </th>
-              <th scope="col" class="text-right uppercase cursor-pointer select-none" @click="toggleSort('uptime')">
-                <span class="inline-flex items-center justify-end w-full">{{ $t('validator.uptime') }}<Icon :icon="sortIcon('uptime')" class="ml-1" /></span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="({v, rank, logo, pos}, i) in list"
-              :key="v.operator_address"
-              class="hover:bg-gray-100 dark:hover:bg-[#384059]"
-            >
-              <!-- 👉 rank -->
-              <td>
                 <div
-                  class="text-xs truncate relative px-2 py-1 rounded-full w-fit"
-                  :class="`text-${rank}`"
-                >
-                  <span
-                    class="inset-x-0 inset-y-0 opacity-10 absolute"
-                    :class="`bg-${rank}`"
-                  ></span>
-                  {{ pos + 1 }}
-                </div>
-              </td>
-              <!-- 👉 Validator -->
-              <td>
-                <div
-                  class="flex items-center overflow-hidden"
-                  style="max-width: 300px"
+                  class="avatar !flex mx-4 relative w-8 h-8 rounded-full"
                 >
                   <div
-                    class="avatar mr-4 relative w-8 h-8 rounded-full"
+                    class="w-8 h-8 rounded-full bg-gray-400 absolute opacity-10"
+                  ></div>
+                  <div
+                    class="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden"
+                    :class="{ 'bg-gray-200 dark:bg-[#2b2f44]': !validatorStore.getAvatarUrl(v.description?.identity) }"
                   >
-                    <div
-                      class="w-8 h-8 rounded-full bg-gray-400 absolute opacity-10"
-                    ></div>
-                    <div class="w-8 h-8 rounded-full">
-                      <img
-                        v-if="logo"
-                        :src="logo"
-                        class="object-contain"
-                        @error="
-                          (e) => {
-                            const identity = v.description?.identity;
-                            if (identity) loadAvatar(identity);
-                          }
-                        "
-                      />
-                      <Icon
-                        v-else
-                        class="text-3xl"
-                        :icon="`mdi-help-circle-outline`"
-                      />
-                      
-                    </div>
-                  </div>
-
-                  <div class="flex flex-col">
-                    <span class="text-sm text-primary dark:invert whitespace-nowrap overflow-hidden">
-                      <RouterLink
-                        :to="{
-                          name: 'chain-validator-validator',
-                          params: {
-                            validator:
-                              v.operator_address,
-                          },
-                        }"
-                        class="font-weight-medium"
-                      >
-                        {{ v.description?.moniker }}
-                      </RouterLink>
-                    </span>
-                    <span class="text-xs">{{
-                      v.description?.website ||
-                      v.description?.identity ||
-                      '-'
-                    }}</span>
+                    <img
+                      v-if="validatorStore.getAvatarUrl(v.description?.identity)"
+                      :src="validatorStore.getAvatarUrl(v.description?.identity)"
+                      class="object-contain"
+                      @error="
+                        (e) => {
+                          const keySuffix = v.description?.identity;
+                          if (keySuffix) validatorStore.fetchAvatar(keySuffix);
+                        }
+                      "
+                    />
+                    <Icon
+                      v-else
+                      class="text-gray-500 dark:text-gray-400"
+                      :width="32"
+                      :height="32"
+                      :icon="`mdi-help-circle-outline`"
+                    />
+                    
                   </div>
                 </div>
-              </td>
 
-              <!-- 👉 Voting Power -->
-              <td class="text-right">
                 <div class="flex flex-col">
-                  <h6 class="text-sm font-weight-medium whitespace-nowrap ">
-                    {{
-                      format.formatToken(
-                        {
-                          amount: parseInt(
-                            v.tokens
-                          ).toString(),
-                          denom: validatorStore.params
-                            .bond_denom,
+                  <span class="text-sm text-primary dark:invert whitespace-nowrap overflow-hidden">
+                    <RouterLink
+                      :to="{
+                        name: 'chain-validator-validator',
+                        params: {
+                          validator:
+                            v.operator_address,
                         },
-                        false,
-                        '0,0'
-                      )
-                    }}
-                  </h6>
+                      }"
+                      class="font-weight-medium"
+                    >
+                      {{
+                        v.description?.moniker === v.operator_address
+                          ? (validatorStore.operatorToAccountMap[v.operator_address] || v.operator_address)
+                          : v.description?.moniker
+                      }}
+                    </RouterLink>
+                  </span>
                   <span class="text-xs">{{
-                    format.calculatePercent(
-                      v.tokens,
-                      validatorStore.totalPower
-                    )
+                    v.description?.website ||
+                    v.description?.identity ||
+                    '-'
                   }}</span>
                 </div>
-              </td>
-              <!-- 👉 24h Changes -->
-              <td
-                class="text-right text-xs"
-                :class="votingPowerChange24Color(v)"
+              </div>
+            </td>
+
+            <!-- 👉 Voting Power -->
+            <td class="text-right">
+              <div class="flex flex-col">
+                <h6 class="text-sm font-weight-medium whitespace-nowrap ">
+                  {{ format.formatNumber(Number(validatorStore.getParticipant(v.operator_address)?.weight || 0), '0,0') }}
+                </h6>
+                <span class="text-xs">{{
+                  format.calculatePercent(
+                    Number(validatorStore.getParticipant(v.operator_address)?.weight || 0),
+                    validatorStore.totalPocWeight
+                  )
+                }}</span>
+              </div>
+            </td>
+            <!-- 👉 24h Changes -->
+            <td
+              class="text-right text-xs"
+              :class="votingPowerChange24Color(v)"
+            >
+              {{ votingPowerChange24Text(v) }}
+            </td>
+            <!-- 👉 Earned -->
+            <td class="text-right text-xs">
+              {{ format.formatToken({
+                amount: validatorStore.getEarnedCoins(v.operator_address), 
+                denom: 'ngonka'
+              }, true, '0,0.[00]') }}
+            </td>
+            <!-- 👉 Active -->
+            <td class="text-right text-xs">
+              {{ validatorStore.getEpochsCompleted(v.operator_address) }}
+            </td>
+            <!-- 👉 Reputation -->
+            <td class="text-right text-xs">
+              {{ validatorStore.getReputation(v.operator_address) }}
+            </td>
+            <!-- 👉 Missed Blocks -->
+            <td class="text-right text-xs">
+              <span 
+                :class="{
+                  'text-green-600': getMissedBlocksCounter(v.operator_address) <= 10,
+                  'text-yellow-600': getMissedBlocksCounter(v.operator_address) > 10 && getMissedBlocksCounter(v.operator_address) <= 1000,
+                  'text-red-600': getMissedBlocksCounter(v.operator_address) > 1000
+                }"
               >
-                {{ votingPowerChange24Text(v) }}
-              </td>
-              <!-- 👉 Earned -->
-              <td class="text-right text-xs">
-                {{ format.formatToken({
-                  amount: validatorStore.getEarnedCoins(v.operator_address), 
-                  denom: 'ngonka'
-                }, true, '0,0.[00]') }}
-              </td>
-              <!-- 👉 Active -->
-              <td class="text-right text-xs">
-                {{ validatorStore.getEpochsCompleted(v.operator_address) }}
-              </td>
-              <!-- 👉 Reputation -->
-              <td class="text-right text-xs">
-                {{ validatorStore.getReputation(v.operator_address) }}
-              </td>
-              <!-- 👉 Missed Blocks -->
-              <td class="text-right text-xs">
-                <span 
-                  :class="{
-                    'text-green-600': getMissedBlocksCounter(v.operator_address) <= 10,
-                    'text-yellow-600': getMissedBlocksCounter(v.operator_address) > 10 && getMissedBlocksCounter(v.operator_address) <= 1000,
-                    'text-red-600': getMissedBlocksCounter(v.operator_address) > 1000
-                  }"
-                >
-                  {{ formatMissedBlocks(v.operator_address) }}
-                </span>
-              </td>
-              <!-- 👉 Uptime -->
-              <td class="text-right text-xs">
-                <span 
-                  :class="{
-                    'text-green-600': getUptimePercentage(v.operator_address) >= 95,
-                    'text-yellow-600': getUptimePercentage(v.operator_address) >= 90 && getUptimePercentage(v.operator_address) < 95,
-                    'text-red-600': getUptimePercentage(v.operator_address) < 90
-                  }"
-                >
-                  {{ formatUptime(v.operator_address) }}
-                </span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+                {{ formatMissedBlocks(v.operator_address) }}
+              </span>
+            </td>
+            <!-- 👉 Uptime -->
+            <td class="text-right text-xs">
+              <span 
+                :class="{
+                  'text-green-600': getUptimePercentage(v.operator_address) >= 95,
+                  'text-yellow-600': getUptimePercentage(v.operator_address) >= 90 && getUptimePercentage(v.operator_address) < 95,
+                  'text-red-600': getUptimePercentage(v.operator_address) < 90
+                }"
+              >
+                {{ formatUptime(v.operator_address) }}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
@@ -632,7 +496,8 @@ loadAvatars();
   {
     meta: {
       i18n: 'validator',
-      order: 3
+      order: 2,
+      description: 'Validator selection happens through Sprints — short cycles where Hosts (who also serve as Validators) prove their computational power by generating nonces. The more nonces produced, the higher the Host’s Potential Weight.\n\nSince Hosts are simultaneously Validators, all network decisions — from block finalization to model registration and treasury allocation — are made based on these PoC-weighted votes.'
     }
   }
 </route>
@@ -641,5 +506,72 @@ loadAvatars();
 .validator-table.table :where(th, td) {
     padding: 8px 5px;
     background: transparent;
+}
+.validator-table.table th.sticky {
+    background: hsl(var(--b2));
+}
+.validator-table.table td.sticky {
+    background: hsl(var(--b1));
+}
+/* Ensure first column header and cells stay sticky horizontally, overriding library defaults */
+.validator-table.table thead th:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: hsl(var(--b2));
+}
+.validator-table.table thead th.th-hover {
+    transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out;
+}
+.validator-table.table thead th.th-hover:hover {
+    background-color: hsl(var(--b3));
+    color: #ffffff;
+}
+.validator-table.table tbody td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: hsl(var(--b1));
+}
+/* Match row hover background for the sticky first column */
+.validator-table.table tbody tr:hover td:first-child {
+    background-color: #f3f4f6; /* same as hover:bg-gray-100 */
+}
+.dark .validator-table.table tbody tr:hover td:first-child {
+    background-color: #384059; /* same as dark:hover:bg-[#384059] */
+}
+/* On small screens, constrain the sticky first column width so it doesn't cover others */
+@media (max-width: 640px) {
+    /* Force horizontal scroll like Mintscan on mobile */
+    .validator-table.table {
+        min-width: 720px;
+    }
+    .validator-table.table thead th:first-child,
+    .validator-table.table tbody td:first-child {
+        width: 20vw;
+        min-width: 20vw;
+        max-width: 20vw;
+    }
+    /* Constrain inner content so width is respected and text can truncate */
+    .validator-table.table thead th:first-child > span {
+        max-width: 100%;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+    .validator-table.table tbody td:first-child > div {
+        max-width: 100%;
+        overflow: hidden;
+    }
+    /* Allow the text column inside the flex row to actually shrink */
+    .validator-table.table tbody td:first-child > div .flex.flex-col {
+        min-width: 0;
+    }
+    .validator-table.table tbody td:first-child span.text-sm,
+    .validator-table.table tbody td:first-child span.text-xs {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
 }
 </style>

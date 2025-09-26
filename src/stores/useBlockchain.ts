@@ -4,6 +4,7 @@ import {
   type ChainConfig,
   type Endpoint,
   EndpointType,
+  LoadingStatus,
 } from './useDashboard';
 import type {
   NavGroup,
@@ -38,9 +39,15 @@ export const useBlockchain = defineStore('blockchain', {
         address: string;
         provider: string;
       },
+      // Initialization guards
+      isInitializing: false as boolean,
+      lastInitializedChain: '' as string,
+      lastInitializedEndpoint: '' as string,
       inferenceApiEndpoint: '' as string,
       connErr: '',
       // Next PoC state
+      currentEpochIndex: null as number | null,
+      currentPocStart: null as number | null,
       nextPocStart: null as number | null,
       epochLength: null as number | null,
     };
@@ -154,7 +161,13 @@ export const useBlockchain = defineStore('blockchain', {
     },
   },
   actions: {
-    async initial() {
+    async initial(force = false) {
+      if (this.isInitializing) return;
+      const currentEndpoint = this.endpoint?.address || '';
+      if (!force && this.lastInitializedChain === this.chainName && this.lastInitializedEndpoint === currentEndpoint) {
+        return;
+      }
+      this.isInitializing = true;
       // this.current?.themeColor {
       //     const { global } = useTheme();
       //     global.current
@@ -165,10 +178,21 @@ export const useBlockchain = defineStore('blockchain', {
       }
       useBankStore().initial();
       useBaseStore().initial();
-      useGovStore().initial();
+      // Avoid resetting gov data if already loading/loaded for this chain
+      const gov = useGovStore();
+      const govLoading = gov.loading?.['2'];
+      if (govLoading === LoadingStatus.Loaded || govLoading === LoadingStatus.Loading) {
+        // Optional: refresh params only
+        try { await gov.fetchParams(); } catch {}
+      } else {
+        useGovStore().initial();
+      }
       useMintStore().initial();
       useBlockModule().initial();
       useDistributionStore().initial();
+      this.lastInitializedChain = this.chainName;
+      this.lastInitializedEndpoint = currentEndpoint;
+      this.isInitializing = false;
     },
 
     randomEndpoint(chainName: string) : Endpoint | undefined {
@@ -221,7 +245,6 @@ export const useBlockchain = defineStore('blockchain', {
       }
     },
 
-    // Inference API methods
     async submitNewUnfundedParticipant(data: {
       address: string;
       url?: string;
@@ -244,6 +267,13 @@ export const useBlockchain = defineStore('blockchain', {
       
       const url = `${this.inferenceApiEndpoint}/v1/participants`;
       return await get(url);
+    },
+
+    async getCurrentEpochParticipants() {
+      if (!this.inferenceApiEndpoint) {
+        throw new Error('Inference API endpoint not configured');
+      }
+      return await this.inferenceApiRequest('/v1/epochs/current/participants');
     },
 
     async getParticipant(address: string) {
@@ -336,15 +366,23 @@ export const useBlockchain = defineStore('blockchain', {
         // Use inference API if configured
         if (this.inferenceApiEndpoint) {
           const data = await this.inferenceApiRequest('/v1/epochs/latest');
+          const currIdx = Number(data?.latest_epoch?.index || data?.epoch_stages?.epoch_index || 0);
+          this.currentEpochIndex = isFinite(currIdx) && currIdx > 0 ? currIdx : null;
+          const currPocStart = Number(data?.latest_epoch?.poc_start_block_height || data?.epoch_stages?.poc_start || 0);
+          this.currentPocStart = isFinite(currPocStart) && currPocStart > 0 ? currPocStart : null;
           const start = Number(data?.next_epoch_stages?.poc_start || 0);
           this.nextPocStart = isFinite(start) && start > 0 ? start : null;
           const len = Number(data?.epoch_params?.epoch_length || 0);
           this.epochLength = isFinite(len) && len > 0 ? len : null;
         } else {
+          this.currentEpochIndex = null;
+          this.currentPocStart = null;
           this.nextPocStart = null;
           this.epochLength = null;
         }
       } catch (e) {
+        this.currentEpochIndex = null;
+        this.currentPocStart = null;
         this.nextPocStart = null;
         this.epochLength = null;
       }

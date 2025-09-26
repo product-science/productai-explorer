@@ -213,7 +213,7 @@ export const useIndexModule = defineStore('module-index', {
   actions: {
     async loadDashboard() {
       this.$reset();
-      this.initCoingecko();
+      //this.initCoingecko();
       useMintStore().fetchInflation();
       useDistributionStore()
         .fetchCommunityPool()
@@ -225,10 +225,6 @@ export const useIndexModule = defineStore('module-index', {
               denom: t.denom,
             }));
         });
-      // const gov = useGovStore();
-      // gov.fetchProposals('2').then((x) => {
-      //   this.proposals = x;
-      // });
     },
     tickerColor(color: string) {
       return colorMap(color);

@@ -43,7 +43,7 @@ export const useStakingStore = defineStore('stakingStore', {
     async init() {
       this.$reset();
       this.fetchPool();
-      this.fetchAcitveValdiators();
+      this.fetchActiveValidators();
       return await this.fetchParams();
     },
     async keybase(identity: string) {
@@ -62,13 +62,16 @@ export const useStakingStore = defineStore('stakingStore', {
         this.pool = response.pool;
       }
     },
-    async fetchAcitveValdiators() {
+    async fetchAllValidators() {
+      return this.fetchValidators('', 500);
+    },
+    async fetchActiveValidators() {
       return this.fetchValidators('BOND_STATUS_BONDED', 500);
     },
-    async fetchInacitveValdiators() {
+    async fetchInactiveValidators() {
       return this.fetchValidators('BOND_STATUS_UNBONDED');
     },    
-    async fetchUnbondingValdiators() {
+    async fetchUnbondingValidators() {
       return this.fetchValidators('BOND_STATUS_UNBONDING');
     },
     async fetchValidator(validatorAddr: string) {

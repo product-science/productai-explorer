@@ -128,13 +128,14 @@ function updateState() {
 <template>
 <div>
   <!-- First Row: Statistics Cards -->
-  <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 mt-4">
+  <div class="grid gap-4 grid-cols-[repeat(auto-fit,minmax(265px,1fr))] mt-4">
     <CardStatisticsVertical
       :title="$t('inference.inferences_today')"
       icon="mdi:robot-outline"
       :stats="inferenceStore.displayInferencesToday"
       color="primary"
       subSymbol="24h"
+      :hint="$t('inference.hints.inferences_today')"
     />
     <CardStatisticsVertical
       :title="$t('inference.inferences_last_week')"
@@ -142,6 +143,7 @@ function updateState() {
       :stats="inferenceStore.displayInferencesLastWeek"
       color="success"
       subSymbol="7d"
+      :hint="$t('inference.hints.inferences_last_week')"
     />
     <CardStatisticsVertical
       :title="$t('inference.ai_tokens_today')"
@@ -149,6 +151,7 @@ function updateState() {
       :stats="inferenceStore.displayAiTokensToday"
       color="warning"
       subSymbol="24h"
+      :hint="$t('inference.hints.ai_tokens_today')"
     />
     <CardStatisticsVertical
       :title="$t('inference.ai_tokens_last_week')"
@@ -156,6 +159,7 @@ function updateState() {
       :stats="inferenceStore.displayAiTokensLastWeek"
       color="info"
       subSymbol="7d"
+      :hint="$t('inference.hints.ai_tokens_last_week')"
     />
   </div>
 
@@ -213,7 +217,8 @@ function updateState() {
   {
     meta: {
       i18n: 'inference',
-      order: 5
+      order: 4,
+      description: 'This section displays network data collected during AI inferences, including performance metrics and usage statistics. During the first 180 epochs, inference prices are set to zero, enabling early adoption and experimentation without cost barriers.'
     }
   }
 </route>
