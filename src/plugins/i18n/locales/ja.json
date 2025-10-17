@@ -158,7 +158,8 @@
       "PROPOSAL_STATUS_FAILED": "失敗"
     },
     "upgrade_plan": "アップグレード計画",
-    "votes": "票"
+    "votes": "票",
+    "meta_description": "Gonkaでは、ガバナンス権は受動的なコイン保有ではなく、検証可能な計算作業によって得られます。意思決定はPoC重み付け投票により、検証済み計算活動と担保に比例して影響力が決まります。"
   },
   "ibc": {
     "title": "IBC接続",
@@ -243,6 +244,7 @@
     "reputation": "評判",
     "missed_blocks": "ミスしたブロック",
     "uptime": "稼働時間",
+    "meta_description": "バリデーターの選定はスプリント（短いサイクル）で行われ、ホスト（同時にバリデーター）がノンスを生成して計算能力を証明します。ネットワークの意思決定はPoC重み付け投票に基づきます。",
     "hints": {
       "next_poc": "次のProof of Computeサイクルまでの残り時間",
       "total_power": "稼働中のすべてのホスト/バリデーターの計算能力",
@@ -282,7 +284,9 @@
     "gas": "ガス",
     "fee": "手数料",
     "memo": "メモ",
-    "no_messages": "メッセージはありません"
+    "status": "ステータス",
+    "no_messages": "メッセージはありません",
+    "meta_description": "最近のブロック内のトランザクションのみを表示します（AI推論、コイン送金、その他の操作）。"
   },
   "uptime": {
     "overall": "全体",
@@ -346,6 +350,25 @@
     "active_developers": "アクティブ開発者",
     "inactive_developers": "非アクティブ開発者",
     "description": "開発者活動とプロジェクト統計",
+    "connect_wallet": "ウォレットを接続",
+    "disconnect": "切断",
+    "connect_wallet_hint": "ウォレットを接続して残高を確認し、流動性プールでステーブルコインをGNKにスワップしましょう。",
+    "use_api": "Gonka API を利用",
+    "api_docs": "API ドキュメント",
+    "api_docs_hint": "Gonkaで開発者アカウントを作成し、Gonka API を使用して推論リクエストを送信する方法を学びましょう",
+    "liquidity_pool": "流動性プール",
+    "loading_pool_info": "プール情報を読み込み中...",
+    "stable_coin": "ステーブルコイン",
+    "token": "トークン",
+    "enter_amount": "金額を入力してください",
+    "calculating": "計算中...",
+    "swap_processing": "スワップを処理中...",
+    "swap": "スワップ",
+    "connect_wallet_to_swap": "スワップにはウォレット接続が必要です",
+    "insufficient_balance": "残高不足です",
+    "coming_soon": "近日公開",
+    "feature_unavailable": "この機能は近日公開予定です。",
+    "meta_description": "開発者は分散型Gonkaネットワーク上でAIアプリを構築・展開し、分散コンピューティングを活用してモデルを実行します。",
     "hints": {
       "ai_tokens_last_week": "直近7エポックで処理された入力/出力AIトークンの合計",
       "global_users": "Gonka分散型ネットワーク上でAIアプリを開発・デプロイしている開発者数",
@@ -369,6 +392,7 @@
     "latency": "レイテンシー",
     "no_models": "利用可能なモデルがありません",
     "performance_chart_placeholder": "パフォーマンスチャートがここに表示されます",
+    "meta_description": "このセクションではAI推論で収集されたネットワークデータ（性能指標や利用統計）を表示します。最初の30エポックの間、推論価格はゼロに設定され、コスト障壁なく早期利用が可能です。",
     "hints": {
       "inferences_today": "本日、ネットワークで処理された推論リクエストの総数",
       "inferences_last_week": "過去7エポック（1週間）で処理された推論リクエストの総数",

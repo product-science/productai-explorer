@@ -2,7 +2,7 @@
 import ApexCharts from 'vue3-apexcharts';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useBaseStore } from '@/stores';
-import { colorVariables } from './apexChartConfig';
+import { colorVariables, getContrastingBarPalette } from './apexChartConfig';
 import { useInferenceStore } from '@/stores/useInferenceStore';
 
 const baseStore = useBaseStore();
@@ -186,7 +186,7 @@ const chartConfig = computed(() => {
         enabled: false
       }
     },
-    colors: inferenceStore.chartSeries.map(series => series.color),
+    colors: getContrastingBarPalette(theme, inferenceStore.chartSeries.length),
     noData: {
       text: 'No data available',
       align: 'center',

@@ -158,7 +158,8 @@
       "PROPOSAL_STATUS_FAILED": "실패"
     },
     "upgrade_plan": "업그레이드 계획",
-    "votes": "투표"
+    "votes": "투표",
+    "meta_description": "Gonka에서는 거버넌스 권한이 단순한 코인 보유가 아니라 검증 가능한 연산 작업을 통해 부여됩니다. 의사 결정은 PoC 가중 투표로 이루어지며, 검증된 연산 활동과 담보에 비례해 영향력이 결정됩니다."
   },
   "ibc": {
     "title": "IBC 연결",
@@ -243,6 +244,7 @@
     "reputation": "평판",
     "missed_blocks": "놓친 블록",
     "uptime": "가동시간",
+    "meta_description": "검증인 선발은 스프린트(짧은 주기) 동안 이뤄지며, 호스트(검증인)는 논스를 생성하여 연산 능력을 증명합니다. 네트워크 의사 결정은 PoC 가중 투표를 기반으로 합니다.",
     "hints": {
       "next_poc": "다음 Proof of Compute 사이클까지 남은 시간",
       "total_power": "활성 호스트/검증인의 전체 연산 능력",
@@ -282,7 +284,9 @@
     "gas": "가스",
     "fee": "수수료",
     "memo": "메모",
-    "no_messages": "메시지 없음"
+    "status": "상태",
+    "no_messages": "메시지 없음",
+    "meta_description": "최근 블록의 트랜잭션만 표시합니다 (AI 추론, 코인 전송 및 기타 작업)."
   },
   "uptime": {
     "overall": "전체",
@@ -345,6 +349,25 @@
     "active_developers": "활성 개발자",
     "inactive_developers": "비활성 개발자",
     "description": "개발자 활동 및 프로젝트 통계",
+    "connect_wallet": "지갑 연결",
+    "disconnect": "연결 해제",
+    "connect_wallet_hint": "지갑을 연결하여 잔액을 확인하고 유동성 풀에서 스테이블코인을 GNK로 스왑하세요.",
+    "use_api": "Gonka API 사용",
+    "api_docs": "API 문서",
+    "api_docs_hint": "Gonka에서 개발자 계정을 만들고 Gonka API로 추론 요청을 제출하는 방법을 알아보세요",
+    "liquidity_pool": "유동성 풀",
+    "loading_pool_info": "풀 정보 불러오는 중...",
+    "stable_coin": "스테이블코인",
+    "token": "토큰",
+    "enter_amount": "금액을 입력하세요",
+    "calculating": "계산 중...",
+    "swap_processing": "스왑 처리 중...",
+    "swap": "스왑",
+    "connect_wallet_to_swap": "스왑하려면 지갑을 연결하세요",
+    "insufficient_balance": "잔액이 부족합니다",
+    "coming_soon": "곧 제공",
+    "feature_unavailable": "이 기능은 곧 제공될 예정입니다.",
+    "meta_description": "개발자는 분산형 Gonka 네트워크에서 AI 애플리케이션을 개발·배포하고, 분산 컴퓨팅을 활용해 모델을 실행합니다.",
     "hints": {
       "ai_tokens_last_week": "최근 7개 에포크 동안 처리된 입력/출력 AI 토큰 총합",
       "global_users": "Gonka 분산 네트워크에서 AI 애플리케이션을 개발·배포하는 개발자 수",
@@ -368,6 +391,7 @@
     "latency": "지연 시간",
     "no_models": "사용 가능한 모델이 없습니다",
     "performance_chart_placeholder": "성능 차트가 여기에 표시됩니다",
+    "meta_description": "이 섹션은 AI 추론 중 수집된 네트워크 데이터를 표시하며, 성능 지표와 사용 통계를 포함합니다. 초기 30 개 에포크 동안 추론 가격은 0 으로 설정되어 초기 사용을 촉진합니다.",
     "hints": {
       "inferences_today": "오늘 네트워크에서 처리된 추론 요청의 총 수",
       "inferences_last_week": "지난 7개 에포크(1주) 동안 처리된 추론 요청의 총 수",

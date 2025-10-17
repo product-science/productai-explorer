@@ -19,7 +19,6 @@
     "cosmwasm",
     "parameters"
   ],
-  "sdk_version": "0.42.6",
   "coin_type": "1200",
   "min_tx_fee": "100",
   "logo": "/public/logos/gonka-mainnet/logo-small.svg",

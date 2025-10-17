@@ -149,7 +149,8 @@
       "PROPOSAL_STATUS_FAILED": "失败"
     },
     "upgrade_plan": "升级计划",
-    "votes": "投票"
+    "votes": "投票",
+    "meta_description": "在 Gonka，治理权力来源于可验证的计算工作，而非被动持币。治理决策基于 PoC 加权投票，影响力与已验证的计算活动和质押抵押成正比。"
   },
   "ibc": {
     "title": "IBC 连接",
@@ -234,6 +235,7 @@
     "reputation": "声誉",
     "missed_blocks": "错过区块",
     "uptime": "正常运行时间",
+    "meta_description": "验证人选拔通过 Sprint（短周期）进行，主机（也是验证人）通过生成随机数来证明算力。网络决策基于 PoC 加权投票。",
     "hints": {
       "next_poc": "距离下一次 Proof of Compute 周期的剩余时间",
       "total_power": "所有活跃主机/验证者的计算能力",
@@ -273,7 +275,9 @@
     "gas": "Gas",
     "fee": "手续费",
     "memo": "备注",
-    "no_messages": "没有消息"
+    "status": "状态",
+    "no_messages": "没有消息",
+    "meta_description": "仅显示最近区块中的交易（AI 推理、代币转账及其他操作）。"
   },
   "uptime": {
     "overall": "整体",
@@ -336,6 +340,25 @@
     "active_developers": "活跃开发者",
     "inactive_developers": "非活跃开发者",
     "description": "开发者活动和项目统计",
+    "connect_wallet": "连接钱包",
+    "disconnect": "断开连接",
+    "connect_wallet_hint": "连接钱包以查看余额，并通过流动性池将稳定币兑换为 GNK。",
+    "use_api": "使用 Gonka API",
+    "api_docs": "API 文档",
+    "api_docs_hint": "了解如何在 Gonka 创建开发者账户，并使用 Gonka API 提交一次推理请求",
+    "liquidity_pool": "流动性池",
+    "loading_pool_info": "正在加载池信息...",
+    "stable_coin": "稳定币",
+    "token": "代币",
+    "enter_amount": "请输入金额",
+    "calculating": "计算中...",
+    "swap_processing": "正在处理兑换...",
+    "swap": "兑换",
+    "connect_wallet_to_swap": "兑换前请先连接钱包",
+    "insufficient_balance": "余额不足",
+    "coming_soon": "敬请期待",
+    "feature_unavailable": "该功能即将上线。",
+    "meta_description": "开发者在去中心化的 Gonka 网络内构建并部署 AI 应用，利用分布式算力运行其模型。",
     "hints": {
       "ai_tokens_last_week": "过去七个 epoch 期间处理的输入与输出 AI 代币总量",
       "global_users": "在 Gonka 去中心化网络中构建并部署 AI 应用的开发者数量",
@@ -359,6 +382,7 @@
     "latency": "延迟",
     "no_models": "暂无可用模型",
     "performance_chart_placeholder": "性能图表将在此显示",
+    "meta_description": "本节展示 AI 推理期间收集的网络数据，包括性能指标与使用统计。前 30 个 epoch 内，推理价格设为 0，以便于早期使用和试验。",
     "hints": {
       "inferences_today": "当前一天内网络处理的推理请求总数",
       "inferences_last_week": "过去 7 个 epoch（一周）内处理的推理请求总数",

@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import { Icon } from '@iconify/vue';
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRoute } from 'vue-router';
 
 // Components
@@ -40,6 +41,8 @@ blockchain.$subscribe((m, s) => {
 const sidebarShow = ref(false);
 const sidebarOpen = ref(true);
 
+const { t } = useI18n();
+
 const changeOpen = (index: Number) => {
   if (index === 0) {
     sidebarOpen.value = !sidebarOpen.value;
@@ -74,8 +77,14 @@ dayjs()
 // Module info bar support
 const route = useRoute();
 const infoOpen = ref(false);
-const hasInfo = computed(() => Boolean(route.meta?.description));
-const infoDescription = computed(() => (route.meta?.description as string) || '');
+const hasInfo = computed(() => Boolean((route.meta as any)?.descriptionKey || route.meta?.description));
+const infoDescription = computed(() => {
+  const meta: any = route.meta || {};
+  if (meta.descriptionKey) {
+    try { return t(meta.descriptionKey as string); } catch { /* ignore */ }
+  }
+  return (meta.description as string) || '';
+});
 
 watch(
   () => route.fullPath,

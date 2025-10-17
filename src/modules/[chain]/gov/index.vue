@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import { useGovStore } from '@/stores';
 import ProposalListItem from '@/components/ProposalListItem.vue';
+import ProposalListSkeleton from '@/components/ProposalListSkeleton.vue';
 import { ref, onMounted } from 'vue';
 import PaginationBar from '@/components/PaginationBar.vue';
 import { PageRequest } from '@/types';
@@ -39,8 +40,32 @@ function page(p: number) {
             <a class="tab text-gray-400 uppercase" :class="{ 'tab-active': tab === '4' }"
                 @click="changeTab('4')">{{ $t('gov.rejected') }}</a>
         </div>
-        <ProposalListItem :proposals="store?.proposals[tab]" />
-        <PaginationBar :total="store?.proposals[tab]?.pagination?.total" :limit="pageRequest.limit" :callback="page" />
+        <!-- Loading skeleton -->
+        <ProposalListSkeleton v-if="store?.loading?.[tab] === 1" :rows="5" />
+
+        <!-- Empty states -->
+        <div v-else-if="(store?.proposals?.[tab]?.proposals?.length || 0) === 0" class="bg-white dark:bg-[#28334e] rounded text-sm p-6 text-center text-gray-500 dark:text-gray-400">
+            <template v-if="tab === '2'">
+                There are no active proposals right now. Check back later to see what’s up for voting.
+            </template>
+            <template v-else-if="tab === '3'">
+                No passed proposals to show. Stay tuned for future decisions.
+            </template>
+            <template v-else>
+                Nothing has been rejected yet.
+            </template>
+        </div>
+
+        <!-- List -->
+        <ProposalListItem v-else :proposals="store?.proposals[tab]" />
+
+        <!-- Pagination (hide when loading or empty) -->
+        <PaginationBar
+            v-if="store?.loading?.[tab] !== 1 && (store?.proposals?.[tab]?.proposals?.length || 0) > 0"
+            :total="store?.proposals[tab]?.pagination?.total"
+            :limit="pageRequest.limit"
+            :callback="page"
+        />
     </div>
 </template>
 <route>
@@ -48,7 +73,7 @@ function page(p: number) {
     meta: {
       i18n: 'governance',
       order: 6,
-      description: 'In Gonka, governance power is earned through verifiable compute work, not passive coin ownership.\n\nGovernance decisions are made through PoC-weighted voting, where each participant’s influence is proportional to their verified compute activity and committed collateral.'
+      descriptionKey: 'gov.meta_description'
     }
   }
 </route>

@@ -89,7 +89,7 @@ function search() {
       meta: {
         i18n: 'tx',
         order: 8,
-        description: 'Only show transactions in the recent blocks (AI inferences, coin transfers, and other operations).'
+        descriptionKey: 'tx.meta_description'
       }
     }
   </route>

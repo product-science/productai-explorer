@@ -218,7 +218,7 @@ function updateState() {
     meta: {
       i18n: 'inference',
       order: 4,
-      description: 'This section displays network data collected during AI inferences, including performance metrics and usage statistics. During the first 180 epochs, inference prices are set to zero, enabling early adoption and experimentation without cost barriers.'
+      descriptionKey: 'inference.meta_description'
     }
   }
 </route>

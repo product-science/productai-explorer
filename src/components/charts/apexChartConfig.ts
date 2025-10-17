@@ -3,6 +3,77 @@ import numeral from 'numeral';
 
 const chainStore = useBlockchain()
 
+// 👉 Utilities for color conversions
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const clean = hex.replace('#', '');
+  const bigint = parseInt(clean.length === 3 ? clean.split('').map(x => x + x).join('') : clean, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return { r, g, b };
+}
+
+function rgbToHsl(r: number, g: number, b: number): { h: number; s: number; l: number } {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  let h = 0, s = 0;
+  const l = (max + min) / 2;
+  const d = max - min;
+  if (d !== 0) {
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h *= 60;
+  }
+  return { h, s: s * 100, l: l * 100 };
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  s /= 100; l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (0 <= h && h < 60) { r = c; g = x; b = 0; }
+  else if (60 <= h && h < 120) { r = x; g = c; b = 0; }
+  else if (120 <= h && h < 180) { r = 0; g = c; b = x; }
+  else if (180 <= h && h < 240) { r = 0; g = x; b = c; }
+  else if (240 <= h && h < 300) { r = x; g = 0; b = c; }
+  else { r = c; g = 0; b = x; }
+  const toHex = (v: number) => Math.round((v + m) * 255).toString(16).padStart(2, '0');
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toLowerCase();
+}
+
+// 👉 Generate bright, contrasting palette based on theme primary color
+export function getContrastingBarPalette(theme: string, count: number): string[] {
+  const primaryHex = (themeColors(theme).colors.primary || '#666CFF').toLowerCase();
+  const { r, g, b } = hexToRgb(primaryHex);
+  const baseHsl = rgbToHsl(r, g, b);
+
+  // Start from the complementary hue and distribute around the wheel using golden angle for separation
+  let startHue = (baseHsl.h + 180) % 360;
+  const goldenAngle = 137.508; // degrees
+
+  // Saturation/lightness tuned for strong contrast in both themes
+  const isDark = themeColors(theme).dark;
+  const sat = 88; // high saturation for vivid colors
+  const light = isDark ? 62 : 48; // a bit lighter on dark theme, slightly darker on light theme for readability
+
+  const palette: string[] = [];
+  for (let i = 0; i < Math.max(1, count); i++) {
+    const hue = (startHue + i * goldenAngle) % 360;
+    palette.push(hslToHex(hue, sat, light));
+  }
+
+  // Ensure uniqueness and avoid matching primary exactly
+  const unique = Array.from(new Set(palette.map(x => x.toLowerCase())));
+  if (unique.length === 0) unique.push('#ff4081');
+  return unique.slice(0, Math.max(1, count));
+}
+
 const themeColors = (theme: string) => {
   if (theme === 'light') {
     return {

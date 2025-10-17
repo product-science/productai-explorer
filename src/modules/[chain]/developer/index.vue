@@ -51,6 +51,8 @@ const qrcode = useQRCode(qrCodeSource, {
   margin: 2,
 });
 const walletAddress = ref<string>('');
+const isWalletHintHover = ref(false);
+const isApiHintHover = ref(false);
 
 // Watch for address changes and update QR code
 watch(() => walletStore.currentAddress, (newAddress) => {
@@ -346,15 +348,23 @@ function openConnectWallet() {
       <!-- Connect Wallet Widget -->
       <div class="bg-base-100 rounded shadow">
           <div class="px-4 pt-4 pb-2 text-lg font-semibold text-main">
-              Connect Wallet
+              {{ $t('developer.connect_wallet') }}
           </div>
           <div class="px-4 pb-4">
               <!-- Not Connected State -->
-              <div v-if="!walletAddress" class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-3 h-20 flex items-center justify-center">
-                  <button @click="openConnectWallet" class="btn btn-primary text-white cursor-pointer">
-                      <Icon icon="mdi:wallet" class="mr-2" />
-                      Connect Wallet
+              <div v-if="!walletAddress" class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-6 relative min-h-[96px] grid place-items-center">
+                <div class="absolute top-2 right-2 text-primary" @mouseenter="isWalletHintHover = true" @mouseleave="isWalletHintHover = false">
+                  <Icon icon="mdi:information" />
+                </div>
+                <div class="flex items-center justify-center">
+                  <button v-if="!isWalletHintHover" @click="openConnectWallet" class="btn btn-primary text-white cursor-pointer">
+                    <Icon icon="mdi:wallet" class="mr-2" />
+                    {{ $t('developer.connect_wallet') }}
                   </button>
+                  <p v-else class="text-sm font-semibold text-primary text-center">
+                    {{ $t('developer.connect_wallet_hint') }}
+                  </p>
+                </div>
               </div>
               
               <!-- Connected State -->
@@ -365,6 +375,13 @@ function openConnectWallet() {
                           <span class="text-sm font-semibold text-primary capitalize">
                               {{ walletStore.connectedWallet?.wallet || 'Unknown' }}
                           </span>
+                          <RouterLink
+                            v-if="walletStore.currentAddress"
+                            class="btn btn-xs btn-primary text-white no-underline"
+                            :to="`/${chain}/account/${walletStore.currentAddress}`"
+                          >
+                            {{ $t('index.more') }}
+                          </RouterLink>
                       </div>
                       
                       <!-- QR Code -->
@@ -373,7 +390,7 @@ function openConnectWallet() {
                       </div>
                       
                       <!-- Address -->
-                      <div class="text-center">
+                      <div class="text-center mb-3">
                           <div class="text-xs text-gray-600 dark:text-gray-400 mb-1">Address:</div>
                           <div 
                               class="text-xs font-mono bg-white dark:bg-gray-800 rounded px-2 py-1 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
@@ -383,14 +400,19 @@ function openConnectWallet() {
                               {{ walletAddress.length > 4 ? walletAddress.substring(walletAddress.length - 4) : walletAddress }}
                           </div>
                       </div>
-                      
-
+                      <!-- Balance Summary -->
+                      <div>
+                        <div class="text-xs text-gray-600 dark:text-gray-400 mb-1">{{ $t('account.balance') }}</div>
+                        <div class="text-lg font-semibold text-main">
+                          {{ format.formatToken(walletStore.balanceOfStakingToken) }}
+                        </div>
+                      </div>
                   </div>
                   
                   <!-- Disconnect Button -->
                   <button @click="walletStore.disconnect()" class="btn btn-outline btn-error w-full text-sm">
                       <Icon icon="mdi:logout" class="mr-2" />
-                      Disconnect
+                      {{ $t('developer.disconnect') }}
                   </button>
               </div>
           </div>
@@ -402,104 +424,29 @@ function openConnectWallet() {
       <!-- Use Gonka API Widget -->
       <div class="bg-base-100 rounded shadow">
           <div class="px-4 pt-4 pb-2 text-lg font-semibold text-main">
-              Use Gonka API
+              {{ $t('developer.use_api') }}
           </div>
           <div class="px-4 pb-4">
-              <div class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-3 h-20 flex items-center justify-center">
-                  <button class="btn btn-info text-white cursor-pointer">
-                      <Icon icon="mdi:api" class="mr-2" />
-                      API Documentation
+              <div class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-6 relative min-h-[96px] grid place-items-center">
+                <div class="absolute top-2 right-2 text-primary" @mouseenter="isApiHintHover = true" @mouseleave="isApiHintHover = false">
+                  <Icon icon="mdi:information" />
+                </div>
+                <div class="flex items-center justify-center">
+                  <button v-if="!isApiHintHover" class="btn btn-info text-white cursor-pointer">
+                    <Icon icon="mdi:api" class="mr-2" />
+                    {{ $t('developer.api_docs') }}
                   </button>
+                  <p v-else class="text-sm font-semibold text-primary text-center">
+                    {{ $t('developer.api_docs_hint') }}
+                  </p>
+                </div>
               </div>
           </div>
       </div>
 
 
   </div>
-
-  <!-- Third Row: Wallet Widget (Only visible when connected) -->
-  <div v-if="walletAddress" class="bg-base-100 rounded mt-4 shadow">
-      <div class="flex justify-between px-4 pt-4 pb-2 text-lg font-semibold text-main">
-        <RouterLink v-if="walletStore.currentAddress"
-          class="float-right text-sm cursor-pointert link link-primary no-underline font-medium"
-          :to="`/${chain}/account/${walletStore.currentAddress}`">{{ $t('index.more') }}</RouterLink>
-      </div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4 px-4 pb-6">
-        <div class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-3">
-          <div class="text-sm mb-1">{{ $t('account.balance') }}</div>
-          <div class="text-lg font-semibold text-main">
-            {{ format.formatToken(walletStore.balanceOfStakingToken) }}
-          </div>
-          <div class="text-sm" :class="color">
-            ${{ format.tokenValue(walletStore.balanceOfStakingToken) }}
-          </div>
-        </div>
-        <div class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-3">
-          <div class="text-sm mb-1">{{ $t('index.reward') }}</div>
-          <div class="text-lg font-semibold text-main">
-            {{ format.formatToken(walletStore.rewardAmount) }}
-          </div>
-          <div class="text-sm" :class="color">
-            ${{ format.tokenValue(walletStore.rewardAmount) }}
-          </div>
-        </div>
-      </div>
-
-      <div v-if="walletStore.delegations.length > 0" class="px-4 pb-4 overflow-auto">
-        <table class="table table-compact w-full table-zebra">
-          <thead>
-            <tr>
-              <th>{{ $t('account.validator') }}</th>
-              <th>{{ $t('account.delegations') }}</th>
-              <th>{{ $t('account.rewards') }}</th>
-              <th>{{ $t('staking.actions') }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(item, index) in walletStore.delegations" :key="index">
-              <td>
-                <RouterLink class="link link-primary no-underline" :to="`/${chain}/staking/${item?.delegation?.validator_address}`">
-                {{
-                  format.validatorFromBech32(
-                    item?.delegation?.validator_address
-                  )
-                }}
-                </RouterLink>
-              </td>
-              <td>{{ format.formatToken(item?.balance) }}</td>
-              <td>
-                {{
-                  format.formatTokens(
-                    walletStore?.rewards?.rewards?.find(
-                      (el) =>
-                        el?.validator_address ===
-                        item?.delegation?.validator_address
-                    )?.reward)
-                }}
-              </td>
-              <td>
-                <div>
-                  <label for="withdraw" class="btn !btn-xs !btn-primary btn-ghost rounded-sm"
-                    @click="dialog.open('withdraw', { validator_address: item.delegation.validator_address }, updateState)">
-                    {{ $t('index.btn_withdraw_reward') }}
-                  </label>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4 px-4 pb-6 mt-4">
-      <label for="PingTokenConvert" class="btn btn-primary text-white">{{ $t('index.btn_swap') }}</label>
-        <label for="send" class="btn !bg-yes !border-yes text-white" @click="dialog.open('send', { balances: walletStore.balances }, updateState)">{{ $t('account.btn_send') }}</label>
-        <RouterLink to="/wallet/receive" class="btn !bg-info !border-info text-white hidden">{{ $t('index.receive') }}</RouterLink>
-      </div>
-      <Teleport to="body">
-        <ping-token-convert :chain-name="blockchain?.current?.prettyName" :endpoint="blockchain?.endpoint?.address"
-          :hd-path="walletStore?.connectedWallet?.hdPath"></ping-token-convert>
-      </Teleport>
-  </div>
+  
   
   <!-- Copy Toast -->
   <div class="toast toast-end" v-show="showCopyToast === 1">
@@ -536,7 +483,7 @@ function openConnectWallet() {
     meta: {
       i18n: 'developer',
       order: 3,
-      description: 'Developers build and deploy AI applications within Gonka decentralized network, leveraging the distributed computational power to run their models.'
+      descriptionKey: 'developer.meta_description'
     }
   }
 </route>

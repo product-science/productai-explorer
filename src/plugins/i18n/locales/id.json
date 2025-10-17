@@ -147,7 +147,8 @@
         "PROPOSAL_STATUS_FAILED": "Gagal"
       },
       "upgrade_plan": "Peningkatan Rencana",
-      "votes": "Suara"
+      "votes": "Suara",
+      "meta_description": "Di Gonka, kekuatan tata kelola diperoleh melalui kerja komputasi yang dapat diverifikasi, bukan dari kepemilikan koin pasif. Keputusan dibuat melalui pemungutan suara berbobot PoC, sebanding dengan aktivitas komputasi terverifikasi dan kolateral."
     },
     "ibc": {
       "title": "Koneksi IBC",
@@ -232,6 +233,7 @@
       "reputation": "Reputasi",
       "missed_blocks": "Blok Terlewat",
       "uptime": "Waktu Aktif",
+      "meta_description": "Pemilihan validator berlangsung melalui Sprint — siklus singkat ketika Host (juga Validator) membuktikan daya komputasi dengan menghasilkan nonce. Keputusan jaringan didasarkan pada suara berbobot PoC.",
       "hints": {
         "next_poc": "Sisa waktu hingga siklus Proof of Compute berikutnya",
         "total_power": "Kapasitas komputasi semua Host/Validator yang aktif",
@@ -271,7 +273,9 @@
       "gas": "Bahan bakar",
       "fee": "Biaya",
       "memo": "Memo",
-      "no_messages": "Tidak ada pesan"
+      "status": "Status",
+      "no_messages": "Tidak ada pesan",
+      "meta_description": "Hanya menampilkan transaksi di blok terbaru (inferensi AI, transfer koin, dan operasi lainnya)."
     },
     "uptime": {
       "overall": "Secara keseluruhan",
@@ -334,6 +338,25 @@
       "active_developers": "Pengembang Aktif",
       "inactive_developers": "Pengembang Tidak Aktif",
       "description": "Statistik aktivitas pengembang dan proyek",
+      "connect_wallet": "Hubungkan Dompet",
+      "disconnect": "Putuskan",
+      "connect_wallet_hint": "Hubungkan dompet Anda untuk melihat saldo dan menukar stablecoin menjadi GNK melalui kolam likuiditas.",
+      "use_api": "Gunakan API Gonka",
+      "api_docs": "Dokumentasi API",
+      "api_docs_hint": "Pelajari cara membuat akun pengembang di Gonka dan mengirim permintaan inferensi menggunakan Gonka API",
+      "liquidity_pool": "Kolam Likuiditas",
+      "loading_pool_info": "Memuat informasi kolam...",
+      "stable_coin": "Stablecoin",
+      "token": "Token",
+      "enter_amount": "Silakan masukkan jumlah",
+      "calculating": "Menghitung...",
+      "swap_processing": "Memproses pertukaran...",
+      "swap": "Tukar",
+      "connect_wallet_to_swap": "Hubungkan dompet untuk menukar",
+      "insufficient_balance": "Saldo tidak mencukupi",
+      "coming_soon": "Segera hadir",
+      "feature_unavailable": "Fitur ini akan tersedia segera.",
+      "meta_description": "Pengembang membangun dan menerapkan aplikasi AI di jaringan terdesentralisasi Gonka, memanfaatkan komputasi terdistribusi untuk menjalankan model mereka.",
       "hints": {
         "ai_tokens_last_week": "Total token AI input dan output yang diproses selama tujuh epoch terakhir.",
         "global_users": "Jumlah pengembang yang membangun dan menerapkan aplikasi AI di jaringan terdesentralisasi Gonka",
@@ -357,6 +380,7 @@
       "latency": "Latensi",
       "no_models": "Tidak ada model tersedia",
       "performance_chart_placeholder": "Grafik performa akan ditampilkan di sini",
+      "meta_description": "Bagian ini menampilkan data jaringan dari inferensi AI, termasuk metrik performa dan statistik penggunaan. Selama 30 epoch pertama, harga inferensi adalah nol untuk mendukung adopsi awal tanpa hambatan biaya.",
       "hints": {
         "inferences_today": "Jumlah total permintaan inferensi yang diproses jaringan pada hari ini.",
         "inferences_last_week": "Jumlah total permintaan inferensi yang diproses selama 7 epoch terakhir (satu minggu).",

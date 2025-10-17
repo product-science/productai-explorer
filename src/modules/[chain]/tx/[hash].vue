@@ -60,17 +60,17 @@ const messages = computed(() => {
                             </td>
                         </tr>
                         <tr>
-                            <td>{{ $t('staking.status') }}</td>
+                            <td>{{ $t('tx.status') }}</td>
                             <td>
-                                <span class="text-xs truncate relative py-2 px-4 w-fit mr-2 rounded" :class="`text-${tx.tx_response.code === 0 ? 'success' : 'error'
-                                    }`">
-                                    <span class="inset-x-0 inset-y-0 opacity-10 absolute" :class="`bg-${tx.tx_response.code === 0 ? 'success' : 'error'
-                                        }`"></span>
-                                    {{ tx.tx_response.code === 0 ? 'Success' : 'Failed' }}
-                                </span>
-                                <span>
-                                    {{ tx.tx_response.code === 0 ? '' : tx?.tx_response?.raw_log }}
-                                </span>
+                                <div class="flex items-start gap-2">
+                                    <div class="text-xs relative py-2 px-4 w-fit rounded" :class="`text-${tx.tx_response.code === 0 ? 'success' : 'error'}`">
+                                        <span class="inset-x-0 inset-y-0 opacity-10 absolute" :class="`bg-${tx.tx_response.code === 0 ? 'success' : 'error'}`"></span>
+                                        {{ tx.tx_response.code === 0 ? 'Success' : 'Failed' }}
+                                    </div>
+                                    <div v-if="tx.tx_response.code !== 0 && tx?.tx_response?.raw_log" class="text-sm break-words whitespace-pre-wrap flex-1">
+                                        {{ tx.tx_response.raw_log }}
+                                    </div>
+                                </div>
                             </td>
                         </tr>
                         <tr>

@@ -22,7 +22,8 @@ import {
   useGovStore,
   useMintStore,
   useStakingStore,
-  useWalletStore
+  useWalletStore,
+  useParamStore
 } from '.';
 import { useBlockModule } from '@/modules/[chain]/block/block';
 import { DEFAULT } from '@/libs';
@@ -163,6 +164,8 @@ export const useBlockchain = defineStore('blockchain', {
   actions: {
     async initial(force = false) {
       if (this.isInitializing) return;
+      // Fetch ABCI info to persist SDK version for API registry selection
+      await useParamStore().handleAbciInfo();
       const currentEndpoint = this.endpoint?.address || '';
       if (!force && this.lastInitializedChain === this.chainName && this.lastInitializedEndpoint === currentEndpoint) {
         return;

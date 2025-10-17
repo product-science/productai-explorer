@@ -2,10 +2,12 @@
 import ApexCharts from 'vue3-apexcharts';
 import { computed, ref } from '@vue/reactivity';
 import { useBaseStore } from '@/stores';
+import { getContrastingBarPalette } from './apexChartConfig';
 
 const baseStore = useBaseStore();
 
 const options = computed(() => {
+    const theme = baseStore.theme;
     return {
         chart: {
             type: 'bar',
@@ -20,7 +22,7 @@ const options = computed(() => {
         dataLabels: {
           enabled: false
         },
-        colors: ['#5A67D8'],
+        colors: getContrastingBarPalette(theme, 1),
         xaxis: {
             labels: {
                 show: false,

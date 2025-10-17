@@ -229,11 +229,21 @@ onMounted(() => {
 </script>
 
 <template>
-  <div v-if="shouldShowWidget" class="bg-base-100 rounded shadow">
-    <div class="px-4 pt-4 pb-2 text-lg font-semibold text-main">
-      {{ $t('developer.liquidity_pool') }}
+  <div class="bg-base-100 rounded shadow">
+    <div class="px-4 pt-4 pb-2 text-lg font-semibold text-main flex items-center justify-between">
+      <span>{{ $t('developer.liquidity_pool') }}</span>
+      <span v-if="!shouldShowWidget" class="badge badge-outline badge-sm text-xs">
+        {{ $t('developer.coming_soon') }}
+      </span>
     </div>
     <div class="px-4 pb-4">
+      <div v-if="!shouldShowWidget" class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-6 flex items-center justify-center text-center">
+        <div class="space-y-1">
+          <div class="text-sm font-medium">{{ $t('developer.feature_unavailable') }}</div>
+          <div class="text-xs text-gray-600 dark:text-gray-400">{{ $t('developer.coming_soon') }}</div>
+        </div>
+      </div>
+      <template v-else>
       <!-- Loading State -->
       <div v-if="loading" class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-3 h-20 flex items-center justify-center">
         <div class="text-center">
@@ -348,6 +358,7 @@ onMounted(() => {
           </div>
         </div>
       </div>
+      </template>
     </div>
   </div>
 </template>

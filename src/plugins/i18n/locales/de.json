@@ -158,7 +158,8 @@
       "PROPOSAL_STATUS_FAILED": "Gescheitert"
     },
     "upgrade_plan": "Upgrade-Plan",
-    "votes": "Stimmen"
+    "votes": "Stimmen",
+    "meta_description": "In Gonka wird Governance‑Macht durch überprüfbare Rechenarbeit verdient, nicht durch passiven Token‑Besitz. Entscheidungen erfolgen über PoC‑gewichtete Abstimmungen, proportional zur verifizierten Rechenaktivität und hinterlegten Sicherheiten."
   },
   "ibc": {
     "title": "IBC-Verbindungen",
@@ -243,6 +244,7 @@
     "reputation": "Ruf",
     "missed_blocks": "Verpasste Blöcke",
     "uptime": "Betriebszeit",
+    "meta_description": "Die Auswahl der Validatoren erfolgt in Sprints – kurzen Zyklen, in denen Hosts (auch Validatoren) ihre Rechenleistung durch das Erzeugen von Nonces nachweisen. Entscheidungen im Netzwerk basieren auf PoC‑gewichteten Stimmen.",
     "hints": {
       "next_poc": "Verbleibende Zeit bis zum nächsten Proof‑of‑Compute‑Zyklus",
       "total_power": "Rechenkapazität aller aktiven Hosts/Validatoren",
@@ -282,7 +284,9 @@
     "gas": "Gas",
     "fee": "Gebühr",
     "memo": "Memo",
-    "no_messages": "Keine Nachrichten"
+    "status": "Status",
+    "no_messages": "Keine Nachrichten",
+    "meta_description": "Es werden nur Transaktionen in den jüngsten Blöcken angezeigt (AI‑Inferenzen, Coin‑Transfers und weitere Operationen)."
   },
   "uptime": {
     "overall": "Gesamt",
@@ -345,6 +349,25 @@
     "active_developers": "Aktive Entwickler",
     "inactive_developers": "Inaktive Entwickler",
     "description": "Entwickleraktivität und Projektstatistiken",
+    "connect_wallet": "Wallet verbinden",
+    "disconnect": "Trennen",
+    "connect_wallet_hint": "Verbinde deine Wallet, um dein Guthaben zu sehen und Stablecoins über den Liquiditätspool gegen GNK zu tauschen.",
+    "use_api": "Gonka API verwenden",
+    "api_docs": "API-Dokumentation",
+    "api_docs_hint": "Erfahre, wie du ein Entwicklerkonto in Gonka erstellst und eine Inferenzanfrage über die Gonka‑API einreichst",
+    "liquidity_pool": "Liquiditätspool",
+    "loading_pool_info": "Lade Pool-Informationen...",
+    "stable_coin": "Stablecoin",
+    "token": "Token",
+    "enter_amount": "Bitte Betrag eingeben",
+    "calculating": "Berechne...",
+    "swap_processing": "Tausch wird verarbeitet...",
+    "swap": "Tauschen",
+    "connect_wallet_to_swap": "Zum Tauschen Wallet verbinden",
+    "insufficient_balance": "Unzureichendes Guthaben",
+    "coming_soon": "Bald verfügbar",
+    "feature_unavailable": "Diese Funktion ist bald verfügbar.",
+    "meta_description": "Entwickler erstellen und deployen AI‑Anwendungen im dezentralen Gonka‑Netzwerk und nutzen die verteilte Rechenleistung für ihre Modelle.",
     "hints": {
       "ai_tokens_last_week": "In den letzten sieben Epochen verarbeitete Gesamtzahl an Eingabe‑ und Ausgabe‑AI‑Tokens.",
       "global_users": "Anzahl der Entwickler, die im dezentralen Gonka‑Netzwerk AI‑Anwendungen entwickeln und bereitstellen",
@@ -368,6 +391,7 @@
     "latency": "Latenz",
     "no_models": "Keine Modelle verfügbar",
     "performance_chart_placeholder": "Leistungsdiagramm wird hier angezeigt",
+    "meta_description": "Dieser Bereich zeigt Netzwerkdaten aus AI‑Inferenzen, einschließlich Leistungsmetriken und Nutzungsstatistiken. Während der ersten 30 Epochen sind Inferenzpreise null, um eine frühe Nutzung ohne Kostenschranken zu ermöglichen.",
     "hints": {
       "inferences_today": "Gesamtzahl der Inferenzanfragen, die am heutigen Tag vom Netzwerk verarbeitet wurden.",
       "inferences_last_week": "Gesamtzahl der Inferenzanfragen, die in den letzten 7 Epochen (eine Woche) verarbeitet wurden.",

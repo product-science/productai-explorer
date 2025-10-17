@@ -191,17 +191,18 @@ function isFeatured(endpoints: string[], who?: {website?: string, moniker: strin
 const list = computed(() => {
     let base: { v: any; logo: string }[] = []
     if (tab.value === 'active') {
-        // Only show validators that are active participants in the current epoch
-        const filtered = validatorStore.participantsStakingData
-            .filter(x => {
-                const p = validatorStore.getParticipant(x.operator_address)
-                return !!p && Number(p.weight || 0) > 0
-            })
-
-        base = filtered.map((x) => ({ 
-            v: x, 
-            logo: validatorStore.getAvatarUrl(x.description.identity)
-        }))
+        // Show every node in active_participants list (no staking-based filtering)
+        const participantOperators = Object.keys(validatorStore.participantsMap || {})
+        base = participantOperators.map(op => {
+            const v = validatorStore.participantsStakingData.find(x => x.operator_address === op) || ({
+                operator_address: op,
+                description: { moniker: op }
+            } as any)
+            return {
+                v,
+                logo: validatorStore.getAvatarUrl(v.description?.identity)
+            }
+        })
     } else if (tab.value === 'featured') {
         const endpoint = chainStore.current?.endpoints?.rest?.map(x => x.provider)
         if (endpoint) {
@@ -327,29 +328,29 @@ base.$subscribe((_, s) => {
       <table class="table validator-table w-full">
         <thead class="bg-base-200">
           <tr>
-            <th scope="col" class="uppercase cursor-pointer select-none sticky left-0 z-[2] bg-base-200 th-hover" @click="toggleSort('validator')" :title="$t('validator.hints.table_validators_hosts')">
-              <span class="inline-flex items-center">{{ $t('validator.validators_hosts') }}<Icon :icon="sortIcon('validator')" class="ml-1" /></span>
+            <th scope="col" class="uppercase cursor-pointer select-none sticky left-0 z-[2] bg-base-200 th-hover" @click="toggleSort('validator')">
+              <span class="inline-flex items-center tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_validators_hosts')">{{ $t('validator.validators_hosts') }}<Icon :icon="sortIcon('validator')" class="ml-1" /></span>
             </th>
-            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('voting_power')" :title="$t('validator.hints.table_voting_power')">
-              <span class="inline-flex items-center justify-end w-full">{{ $t('validator.voting_power') }}<Icon :icon="sortIcon('voting_power')" class="ml-1" /></span>
+            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('voting_power')">
+              <span class="inline-flex items-center justify-end w-full tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_voting_power')">{{ $t('validator.voting_power') }}<Icon :icon="sortIcon('voting_power')" class="ml-1" /></span>
             </th>
-            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('change24')" :title="$t('validator.hints.table_24h_changes')">
-              <span class="inline-flex items-center justify-end w-full">{{ $t('validator.24h_changes') }}<Icon :icon="sortIcon('change24')" class="ml-1" /></span>
+            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('change24')">
+              <span class="inline-flex items-center justify-end w-full tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_24h_changes')">{{ $t('validator.24h_changes') }}<Icon :icon="sortIcon('change24')" class="ml-1" /></span>
             </th>
-            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('earned')" :title="$t('validator.hints.table_earned')">
-              <span class="inline-flex items-center justify-end w-full">{{ $t('validator.earned') }}<Icon :icon="sortIcon('earned')" class="ml-1" /></span>
+            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('earned')">
+              <span class="inline-flex items-center justify-end w-full tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_earned')">{{ $t('validator.earned') }}<Icon :icon="sortIcon('earned')" class="ml-1" /></span>
             </th>
-            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('active')" :title="$t('validator.hints.table_active')">
-              <span class="inline-flex items-center justify-end w-full">{{ $t('validator.active') }}<Icon :icon="sortIcon('active')" class="ml-1" /></span>
+            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('active')">
+              <span class="inline-flex items-center justify-end w-full tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_active')">{{ $t('validator.active') }}<Icon :icon="sortIcon('active')" class="ml-1" /></span>
             </th>
-            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('reputation')" :title="$t('validator.hints.table_reputation')">
-              <span class="inline-flex items-center justify-end w-full">{{ $t('validator.reputation') }}<Icon :icon="sortIcon('reputation')" class="ml-1" /></span>
+            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('reputation')">
+              <span class="inline-flex items-center justify-end w-full tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_reputation')">{{ $t('validator.reputation') }}<Icon :icon="sortIcon('reputation')" class="ml-1" /></span>
             </th>
-            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('missed')" :title="$t('validator.hints.table_missed_blocks')">
-              <span class="inline-flex items-center justify-end w-full">{{ $t('validator.missed_blocks') }}<Icon :icon="sortIcon('missed')" class="ml-1" /></span>
+            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('missed')">
+              <span class="inline-flex items-center justify-end w-full tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_missed_blocks')">{{ $t('validator.missed_blocks') }}<Icon :icon="sortIcon('missed')" class="ml-1" /></span>
             </th>
-            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('uptime')" :title="$t('validator.hints.table_uptime')">
-              <span class="inline-flex items-center justify-end w-full">{{ $t('validator.uptime') }}<Icon :icon="sortIcon('uptime')" class="ml-1" /></span>
+            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('uptime')">
+              <span class="inline-flex items-center justify-end w-full tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_uptime')">{{ $t('validator.uptime') }}<Icon :icon="sortIcon('uptime')" class="ml-1" /></span>
             </th>
           </tr>
         </thead>
@@ -366,6 +367,8 @@ base.$subscribe((_, s) => {
               >
                 <div
                   class="avatar !flex mx-4 relative w-8 h-8 rounded-full"
+                  :class="v.jailed ? 'tooltip tooltip-right' : ''"
+                  :data-tip="v.jailed ? $t('validator.jailed') : undefined"
                 >
                   <div
                     class="w-8 h-8 rounded-full bg-gray-400 absolute opacity-10"
@@ -393,6 +396,10 @@ base.$subscribe((_, s) => {
                       :icon="`mdi-help-circle-outline`"
                     />
                     
+                  </div>
+                  <!-- Jailed overlay (icon only; tooltip is on avatar wrapper) -->
+                  <div v-if="v.jailed" class="absolute top-0 left-0 w-8 h-8">
+                    <Icon :icon="`mdi-grid`" class="text-error opacity-60" :width="32" :height="32" />
                   </div>
                 </div>
 
@@ -497,7 +504,7 @@ base.$subscribe((_, s) => {
     meta: {
       i18n: 'validator',
       order: 2,
-      description: 'Validator selection happens through Sprints — short cycles where Hosts (who also serve as Validators) prove their computational power by generating nonces. The more nonces produced, the higher the Host’s Potential Weight.\n\nSince Hosts are simultaneously Validators, all network decisions — from block finalization to model registration and treasury allocation — are made based on these PoC-weighted votes.'
+      descriptionKey: 'validator.meta_description'
     }
   }
 </route>
@@ -548,9 +555,9 @@ base.$subscribe((_, s) => {
     }
     .validator-table.table thead th:first-child,
     .validator-table.table tbody td:first-child {
-        width: 20vw;
-        min-width: 20vw;
-        max-width: 20vw;
+        width: 35vw;
+        min-width: 35vw;
+        max-width: 35vw;
     }
     /* Constrain inner content so width is respected and text can truncate */
     .validator-table.table thead th:first-child > span {
@@ -573,5 +580,34 @@ base.$subscribe((_, s) => {
         overflow: hidden;
         text-overflow: ellipsis;
     }
+}
+
+/* Expand header label spans to fill the entire header cell so tooltip hover covers whole cell */
+.validator-table.table thead th > span.tooltip {
+    display: flex;
+    width: 100%; /* do not exceed cell width to avoid widening the table */
+    position: relative; /* anchor pseudo-elements */
+}
+/* Make tooltip bubble compact and avoid overpowering header text */
+.validator-table.table thead th > span.tooltip::before {
+    font-size: 0.65rem; /* Tailwind text-xs */
+    line-height: 1rem;  /* Tailwind leading-4 */
+    padding: 4px 8px;   /* smaller bubble padding */
+    max-width: 14rem;   /* tighter width to avoid expanding scroll width */
+    white-space: normal; /* allow wrapping instead of overflow */
+    z-index: 50;        /* ensure above table backgrounds */
+    word-break: break-word;
+}
+
+/* Keep the last header's tooltip inside the table by anchoring it to the right */
+.validator-table.table thead th:last-child > span.tooltip.tooltip-bottom::before {
+    left: auto;
+    right: 0;           /* align bubble to the cell's right edge */
+    transform: translateX(0);
+}
+.validator-table.table thead th:last-child > span.tooltip.tooltip-bottom::after {
+    left: auto;
+    right: 10px;        /* place arrow slightly inset from right to match padding */
+    transform: translateX(0);
 }
 </style>

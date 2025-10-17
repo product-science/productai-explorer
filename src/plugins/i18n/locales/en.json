@@ -160,7 +160,8 @@
       "PROPOSAL_STATUS_FAILED": "Failed"
     },
     "upgrade_plan": "Upgrade Plan",
-    "votes": "Votes"
+    "votes": "Votes",
+    "meta_description": "In Gonka, governance power is earned through verifiable compute work, not passive coin ownership. Governance decisions are made through PoC-weighted voting, where influence is proportional to verified compute activity and collateral."
   },
   "ibc": {
     "title": "IBC Connections",
@@ -244,6 +245,7 @@
     "reputation": "Reputation",
     "missed_blocks": "Missed Blocks",
     "uptime": "Uptime",
+    "meta_description": "Validator selection happens through Sprints — short cycles where Hosts (also Validators) prove computational power by generating nonces. Network decisions are made based on PoC‑weighted votes.",
     "hints": {
       "next_poc": "Time left until the next Proof of Compute cycle",
       "total_power": "Computational capacity of all active Hosts/Validators",
@@ -283,7 +285,9 @@
     "gas": "Gas",
     "fee": "Fee",
     "memo": "Memo",
-    "no_messages": "No messages"
+    "status": "Status",
+    "no_messages": "No messages",
+    "meta_description": "Only show transactions in the recent blocks (AI inferences, coin transfers, and other operations)."
   },
   "uptime": {
     "overall": "Overall",
@@ -336,6 +340,12 @@
     "active_providers": "Number of active Hosts/Validators",
     "models": "Models",
     "throughput": "Throughput",
+    "connect_wallet": "Connect Wallet",
+    "disconnect": "Disconnect",
+    "connect_wallet_hint": "Connect your wallet to view balance and swap stablecoins for GNK via the liquidity pool.",
+    "use_api": "Use Gonka API",
+    "api_docs": "API Documentation",
+    "api_docs_hint": "Learn how to create a developer account in Gonka and submit an inference request using the Gonka API",
     "developers": "Developers",
     "id": "ID",
     "name": "Name",
@@ -367,6 +377,9 @@
     "token": "Token",
     "swap_success": "Swap completed successfully!",
     "swap_processing": "Processing swap...",
+    "coming_soon": "Coming soon",
+    "feature_unavailable": "This feature will be available soon.",
+    "meta_description": "Developers build and deploy AI applications within the Gonka decentralized network, leveraging distributed compute to run their models.",
     "hints": {
       "ai_tokens_last_week": "Total input and output AI tokens processed across the last seven epochs.",
       "global_users": "The number of developers building and deploying AI applications within the Gonka decentralized network",
@@ -390,6 +403,7 @@
     "latency": "Latency",
     "no_models": "No models available",
     "performance_chart_placeholder": "Performance chart will be displayed here",
+    "meta_description": "This section displays network data collected during AI inferences, including performance metrics and usage statistics. During the first 30 epochs, inference prices are set to zero, enabling early adoption and experimentation without cost barriers.",
     "hints": {
       "inferences_today": "Total number of inference requests processed by the network during the current day.",
       "inferences_last_week": "Total number of inference requests processed over the last 7 epochs (one week).",
