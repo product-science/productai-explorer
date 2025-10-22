@@ -51,6 +51,12 @@ export const useBlockchain = defineStore('blockchain', {
       currentPocStart: null as number | null,
       nextPocStart: null as number | null,
       epochLength: null as number | null,
+      // Separate next-epoch stages (heights)
+      nextPocGenerationEnd: null as number | null,
+      nextPocValidationStart: null as number | null,
+      nextPocValidationEnd: null as number | null,
+      nextSetNewValidators: null as number | null,
+      
     };
   },
   getters: {
@@ -369,25 +375,39 @@ export const useBlockchain = defineStore('blockchain', {
         // Use inference API if configured
         if (this.inferenceApiEndpoint) {
           const data = await this.inferenceApiRequest('/v1/epochs/latest');
-          const currIdx = Number(data?.latest_epoch?.index || data?.epoch_stages?.epoch_index || 0);
-          this.currentEpochIndex = isFinite(currIdx) && currIdx > 0 ? currIdx : null;
-          const currPocStart = Number(data?.latest_epoch?.poc_start_block_height || data?.epoch_stages?.poc_start || 0);
-          this.currentPocStart = isFinite(currPocStart) && currPocStart > 0 ? currPocStart : null;
-          const start = Number(data?.next_epoch_stages?.poc_start || 0);
-          this.nextPocStart = isFinite(start) && start > 0 ? start : null;
-          const len = Number(data?.epoch_params?.epoch_length || 0);
-          this.epochLength = isFinite(len) && len > 0 ? len : null;
+          const toNum = (v: any) => (isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null);
+          this.currentEpochIndex = toNum(data?.latest_epoch?.index) ?? toNum(data?.epoch_stages?.epoch_index);
+          this.currentPocStart = toNum(data?.latest_epoch?.poc_start_block_height) ?? toNum(data?.epoch_stages?.poc_start);
+          this.nextPocStart = toNum(data?.next_epoch_stages?.poc_start);
+          this.epochLength = toNum(data?.epoch_params?.epoch_length);
+
+          // Store next epoch stages for phase-aware countdowns
+          const nes = data?.next_epoch_stages || {};
+
+          // Populate separate top-level fields for convenience
+          this.nextPocGenerationEnd = toNum(nes?.poc_generation_end);
+          this.nextPocValidationStart = toNum(nes?.poc_validation_start);
+          this.nextPocValidationEnd = toNum(nes?.poc_validation_end);
+          this.nextSetNewValidators = toNum(nes?.set_new_validators);
         } else {
           this.currentEpochIndex = null;
           this.currentPocStart = null;
           this.nextPocStart = null;
           this.epochLength = null;
+          this.nextPocGenerationEnd = null;
+          this.nextPocValidationStart = null;
+          this.nextPocValidationEnd = null;
+          this.nextSetNewValidators = null;
         }
       } catch (e) {
         this.currentEpochIndex = null;
         this.currentPocStart = null;
         this.nextPocStart = null;
         this.epochLength = null;
+        this.nextPocGenerationEnd = null;
+        this.nextPocValidationStart = null;
+        this.nextPocValidationEnd = null;
+        this.nextSetNewValidators = null;
       }
     },
     async setCurrent(name: string) {

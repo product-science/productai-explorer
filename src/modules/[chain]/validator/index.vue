@@ -8,7 +8,7 @@ import {
     useTxDialog,
 } from '@/stores';
 import { computed } from '@vue/reactivity';
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { Icon } from '@iconify/vue';
 import Countdown from '@/components/Countdown.vue';
 import { fromHex, toBase64 } from '@cosmjs/encoding';
@@ -16,6 +16,7 @@ import type { Key, SlashingParam, Validator } from '@/types';
 import type { SigningInfo } from '@/types';
 import { consensusPubkeyToHexAddress, valconsToBase64 } from '@/libs';
 import CardStatisticsVertical from '@/components/CardStatisticsVertical.vue';
+import ValidatorListSkeleton from '@/components/ValidatorListSkeleton.vue';
 
 
 const validatorStore = useValidatorStore();
@@ -31,17 +32,62 @@ const unbondList = ref([] as Validator[]);
 const slashing = ref({} as SlashingParam)
 const isHoveringNext = ref(false)
 
-// Next PoC mini widget state - now using store
+// Next PoC mini widget state with phase switching
 const currentHeight = computed(() => Number(base.latest?.block?.header?.height || 0))
-const pocRemainingBlocks = computed(() => {
-    if (!chainStore.nextPocStart) return 0
-    return Math.max(0, Number(chainStore.nextPocStart) - currentHeight.value)
+
+type PhaseInfo = { labelKey: string; targetHeight: number | null }
+const pocPhase = computed<PhaseInfo>(() => {
+    const h = currentHeight.value
+    const pocStart = Number(chainStore.nextPocStart || 0) || null
+    const genEnd = Number(chainStore.nextPocGenerationEnd || 0) || null
+    const valStart = Number(chainStore.nextPocValidationStart || 0) || null
+    const valEnd = Number(chainStore.nextPocValidationEnd || 0) || null
+    const setNew = Number(chainStore.nextSetNewValidators || 0) || null
+    const nextPocStart = Number(chainStore.nextPocStart || 0) || null
+
+    // Before next epoch PoC start → show Next PoC
+    if (pocStart && h < pocStart) return { labelKey: 'validator.next_poc', targetHeight: pocStart }
+    // PoC Generation phase
+    if (pocStart && genEnd && h >= pocStart && h < genEnd) return { labelKey: 'validator.poc_generation', targetHeight: genEnd }
+    // PoC Validation phase
+    if (valStart && valEnd && h >= valStart && h < valEnd) return { labelKey: 'validator.poc_validation', targetHeight: valEnd }
+    // Selecting new Active Validators
+    if (valEnd && setNew && h >= valEnd && h < setNew) return { labelKey: 'validator.selecting_new_validators', targetHeight: setNew }
+    // After setting new validators → countdown to Next PoC for the following epoch
+    if (setNew && nextPocStart && h >= setNew && h < nextPocStart) return { labelKey: 'validator.next_poc', targetHeight: nextPocStart }
+    // Fallback to simple next PoC target
+    if (chainStore.nextPocStart) return { labelKey: 'validator.next_poc', targetHeight: Number(chainStore.nextPocStart) }
+    return { labelKey: 'validator.next_poc', targetHeight: null }
 })
+
+const hasMeasuredBlockTime = computed(() => {
+    const latestH = Number(base.latest?.block?.header?.height || 0)
+    const earliestH = Number((base as any).earlest?.block?.header?.height || 0)
+    return latestH > 0 && earliestH > 0 && latestH !== earliestH
+})
+
 const pocEstimateMs = computed(() => {
-    const ms = Number(pocRemainingBlocks.value * (base.blocktime || 0))
+    if (!hasMeasuredBlockTime.value || currentHeight.value <= 0) return 0
+    const target = Number(pocPhase.value.targetHeight || 0)
+    const remaining = target > 0 ? target - currentHeight.value : 0
+    const ms = Number(remaining * (base.blocktime || 0))
     return ms > 0 ? ms : 0
 })
-const pocRemainingBlocksDisplay = computed(() => pocRemainingBlocks.value.toString())
+
+// Auto-refresh epoch info once when passing set_new_validators to get fresh next stages
+const refreshedAfterSet = ref(false)
+watch(() => currentHeight.value, async () => {
+    const setNew = Number(chainStore.nextSetNewValidators || 0)
+    if (!refreshedAfterSet.value && setNew && currentHeight.value >= setNew) {
+        try { await chainStore.fetchLatestEpochInfo() } catch {}
+        refreshedAfterSet.value = true
+    }
+    // Reset the guard if next epoch start moved forward
+    const nextStart = Number(chainStore.nextPocStart || 0)
+    if (nextStart && currentHeight.value < nextStart) {
+        refreshedAfterSet.value = false
+    }
+})
 
 // Sorting state
 type SortKey = 'validator' | 'voting_power' | 'change24' | 'earned' | 'active' | 'reputation' | 'missed' | 'uptime'
@@ -287,7 +333,7 @@ base.$subscribe((_, s) => {
           </template>
           <template v-else>—</template>
         </div>
-        <p class="text-sm text-center">Next PoC</p>
+        <p class="text-sm text-center">{{ $t(pocPhase.labelKey) }}</p>
       </template>
       <template #hint>
         <p class="text-sm text-center px-4">{{ $t('validator.hints.next_poc') }}</p>
@@ -354,7 +400,10 @@ base.$subscribe((_, s) => {
             </th>
           </tr>
         </thead>
-        <tbody>
+        <tbody v-if="validatorStore.loading || !validatorStore.initialized">
+          <ValidatorListSkeleton :rows="20" />
+        </tbody>
+        <tbody v-else>
           <tr
             v-for="({v, logo}, i) in list"
             :key="v.operator_address"
@@ -562,9 +611,6 @@ base.$subscribe((_, s) => {
     /* Constrain inner content so width is respected and text can truncate */
     .validator-table.table thead th:first-child > span {
         max-width: 100%;
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
     }
     .validator-table.table tbody td:first-child > div {
         max-width: 100%;
@@ -579,6 +625,17 @@ base.$subscribe((_, s) => {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+    }
+    /* Anchor first header tooltip to the left edge on mobile so it doesn't overflow viewport */
+    .validator-table.table thead th:first-child > span.tooltip.tooltip-bottom::before {
+        left: 0;
+        right: auto;
+        transform: translateX(0);
+    }
+    .validator-table.table thead th:first-child > span.tooltip.tooltip-bottom::after {
+        left: 10px; /* inset to align with cell padding */
+        right: auto;
+        transform: translateX(0);
     }
 }
 
