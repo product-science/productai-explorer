@@ -125,11 +125,11 @@ async function calculateSwap() {
     );
     
     if (result.data) {
-      estimatedOutput.value = result.data.tokens ?? result.data.aic_tokens ?? '';
+      estimatedOutput.value = result.data.tokens ?? result.data.gnk_tokens ?? '';
       currentPrice.value = result.data.current_price;
       // Calculate price impact (simplified)
       const inputValue = parseFloat(swapAmount.value);
-      const outputValue = parseFloat(result.data.aic_tokens) / parseFloat(result.data.current_price);
+      const outputValue = parseFloat(result.data.gnk_tokens) / parseFloat(result.data.current_price);
       const impact = ((inputValue - outputValue) / inputValue) * 100;
       priceImpact.value = impact.toFixed(2);
     }
@@ -327,7 +327,7 @@ onMounted(() => {
                   :placeholder="calculating ? $t('developer.calculating') : '0'"
                 />
               </div>
-              <div class="text-sm font-semibold text-secondary">AIC</div>
+              <div class="text-sm font-semibold text-secondary">{{ $t('developer.gnk') }}</div>
             </div>
           </div>
 

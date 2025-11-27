@@ -111,10 +111,24 @@ const deposit = ref({} as PaginatedProposalDeposit);
 store.fetchProposalDeposits(props.proposal_id).then((x) => (deposit.value = x));
 
 const votes = ref({} as GovVote[]);
+const allVotes = ref<GovVote[] | null>(null);
+const matchedVoters = ref<Set<string> | null>(null);
+const matchedIndices = ref<number[] | null>(null);
+const currentMatchIndex = ref<number | null>(null);
+const allVotesLoading = ref(false);
+const searchQuery = ref('');
+const searchError = ref('');
+const highlightedVoter = ref<string | null>(null);
+
 const pageRequest = ref(new PageRequest());
 const pageResponse = ref({} as Pagination);
+const currentPage = ref(1);
 
-store.fetchProposalVotes(props.proposal_id).then((x) => {
+// Ensure default page size is 20
+pageRequest.value.setPageSize(20);
+pageRequest.value.setPage(1);
+
+store.fetchProposalVotes(props.proposal_id, pageRequest.value).then((x) => {
   votes.value = x.votes;
   pageResponse.value = x.pagination;
 });
@@ -236,11 +250,169 @@ function showValidatorName(voter: string) {
 }
 
 function pageload(p: number) {
+  currentPage.value = p;
   pageRequest.value.setPage(p);
   store.fetchProposalVotes(props.proposal_id, pageRequest.value).then((x) => {
     votes.value = x.votes;
     pageResponse.value = x.pagination;
   });
+}
+
+async function fetchAllVotes() {
+  if (allVotesLoading.value || allVotes.value) return;
+  allVotesLoading.value = true;
+  try {
+    const fullPage = new PageRequest();
+    fullPage.setPageSize(100);
+    fullPage.setPage(1);
+    fullPage.count_total = true;
+
+    let aggregated: GovVote[] = [];
+    const first = await store.fetchProposalVotes(props.proposal_id, fullPage);
+    aggregated = aggregated.concat(first.votes || []);
+    const total = Number(first.pagination.total || aggregated.length);
+    let fetched = aggregated.length;
+
+    while (fetched < total) {
+      fullPage.offset = fetched;
+      fullPage.count_total = false;
+      const res = await store.fetchProposalVotes(props.proposal_id, fullPage);
+      const batch = res.votes || [];
+      if (!batch.length) break;
+      aggregated = aggregated.concat(batch);
+      fetched = aggregated.length;
+    }
+
+    allVotes.value = aggregated;
+  } finally {
+    allVotesLoading.value = false;
+  }
+}
+
+async function performSearch() {
+  searchError.value = '';
+  highlightedVoter.value = null;
+  matchedVoters.value = null;
+  matchedIndices.value = null;
+  currentMatchIndex.value = null;
+
+  const q = searchQuery.value.trim();
+  if (!q) return;
+
+  // Make sure validator store is initialized so mappings are available
+  if (!validatorStore.initialized) {
+    await validatorStore.init();
+  }
+
+  await fetchAllVotes();
+  const list = allVotes.value || [];
+  if (!list.length) {
+    searchError.value = 'No votes loaded yet.';
+    return;
+  }
+
+  const lower = q.toLowerCase();
+  const accountToOperator = validatorStore.accountToOperatorMap;
+  const participantsTotals = validatorStore.participantsTotalsByOperator;
+  const validators = stakingStore.validators || [];
+
+  const indices: number[] = [];
+
+  list.forEach((vote, idx) => {
+    const voter = vote.voter || '';
+    const items: string[] = [voter.toLowerCase()];
+
+    const op = accountToOperator[voter];
+    if (op) {
+      items.push(op.toLowerCase());
+      const totals = participantsTotals[op];
+      if (totals?.account_address) {
+        items.push(totals.account_address.toLowerCase());
+      }
+
+      const validator = validators.find((v) => v.operator_address === op);
+      const moniker = validator?.description?.moniker;
+      if (moniker) {
+        items.push(moniker.toLowerCase());
+      }
+    }
+
+    if (items.some((s) => s.includes(lower))) {
+      indices.push(idx);
+    }
+  });
+
+  if (!indices.length) {
+    searchError.value = 'No matching voter found.';
+    return;
+  }
+
+  matchedIndices.value = indices;
+  matchedVoters.value = new Set(indices.map((i) => list[i].voter));
+
+  const perPage = pageRequest.value.limit || 20;
+
+  // Helper to go to a specific match by its index in matchedIndices
+  const goToMatchAt = (matchPos: number) => {
+    if (!matchedIndices.value || !matchedIndices.value.length) return;
+    const clampedPos = Math.min(Math.max(0, matchPos), matchedIndices.value.length - 1);
+    const globalIndex = matchedIndices.value[clampedPos];
+    const vote = list[globalIndex];
+    const page = Math.floor(globalIndex / perPage) + 1;
+    currentMatchIndex.value = clampedPos;
+    highlightedVoter.value = vote.voter;
+    pageload(page);
+  };
+
+  // Always go to the first match initially
+  goToMatchAt(0);
+}
+
+function gotoNextMatch() {
+  if (!matchedIndices.value || !matchedIndices.value.length) return;
+  const list = allVotes.value || [];
+  const perPage = pageRequest.value.limit || 20;
+  const current = currentMatchIndex.value ?? 0;
+  const next = (current + 1) % matchedIndices.value.length;
+  const globalIndex = matchedIndices.value[next];
+  const vote = list[globalIndex];
+  const page = Math.floor(globalIndex / perPage) + 1;
+  currentMatchIndex.value = next;
+  highlightedVoter.value = vote.voter;
+  pageload(page);
+}
+
+function gotoPrevMatch() {
+  if (!matchedIndices.value || !matchedIndices.value.length) return;
+  const list = allVotes.value || [];
+  const perPage = pageRequest.value.limit || 20;
+  const len = matchedIndices.value.length;
+  const current = currentMatchIndex.value ?? 0;
+  const prev = (current - 1 + len) % len;
+  const globalIndex = matchedIndices.value[prev];
+  const vote = list[globalIndex];
+  const page = Math.floor(globalIndex / perPage) + 1;
+  currentMatchIndex.value = prev;
+  highlightedVoter.value = vote.voter;
+  pageload(page);
+}
+
+function resetSearch() {
+  searchQuery.value = '';
+  searchError.value = '';
+  highlightedVoter.value = null;
+  matchedVoters.value = null;
+  matchedIndices.value = null;
+  currentMatchIndex.value = null;
+}
+
+function rowClass(item: GovVote, _localIndex: number) {
+  const isMatched =
+    matchedVoters.value !== null && matchedVoters.value.has(item.voter);
+
+  return {
+    '!bg-primary !text-white': isMatched,
+  };
 }
 
 function metaItem(metadata: string|undefined): { title: string; summary: string } {
@@ -420,34 +592,84 @@ function metaItem(metadata: string|undefined): { title: string; summary: string 
 
     <div class="bg-base-100 px-4 pt-3 pb-4 rounded mb-4 shadow" v-if="!isFinalized">
       <h2 class="card-title">{{ $t('gov.votes') }}</h2>
-      <div class="overflow-x-auto">
-        <table class="table w-full table-zebra">
-          <tbody>
-            <tr v-for="(item, index) of votes" :key="index">
-              <td class="py-2 text-sm">{{ showValidatorName(item.voter) }}</td>
-              <td
-                v-if="item.option && item.option !== 'VOTE_OPTION_UNSPECIFIED'"
-                class="py-2 text-sm"
-                :class="{
-                  'text-yes': item.option === 'VOTE_OPTION_YES',
-                  'text-gray-400': item.option === 'VOTE_OPTION_ABSTAIN',
-                }"
+      <div>
+        <!-- Search + actions -->
+        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-3">
+          <div class="flex-1 flex gap-2">
+            <input
+              v-model="searchQuery"
+              type="text"
+              class="input input-bordered input-sm w-full"
+              placeholder="Search by gonka address, dev address, or meta name"
+              @keyup.enter="performSearch"
+            />
+            <button
+              class="btn btn-sm btn-primary"
+              :disabled="!searchQuery.trim()"
+              @click="performSearch"
+            >
+              Search
+            </button>
+          </div>
+          <div class="flex items-center gap-2 mt-1 md:mt-0 md:ml-2 text-xs">
+            <template v-if="matchedIndices && matchedIndices.length">
+              <span>
+                {{ (currentMatchIndex ?? 0) + 1 }} / {{ matchedIndices.length }} matches
+              </span>
+              <button class="btn btn-ghost btn-xs" @click="gotoPrevMatch">
+                ‹
+              </button>
+              <button class="btn btn-ghost btn-xs" @click="gotoNextMatch">
+                ›
+              </button>
+            </template>
+            <button
+              v-if="searchQuery || matchedVoters"
+              class="btn btn-outline btn-xs"
+              @click="resetSearch"
+            >
+              Reset
+            </button>
+            <span v-if="searchError" class="text-error">
+              {{ searchError }}
+            </span>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="table w-full table-zebra">
+            <tbody>
+              <tr
+                v-for="(item, index) of votes"
+                :key="index"
+                :class="rowClass(item, index)"
               >
-                {{ String(item.option).replace('VOTE_OPTION_', '') }}
-              </td>
-              <td
-                v-if="item.options"
-                class="py-2 text-sm"
-              >
-                {{ item.options.map(x => `${x.option.replace('VOTE_OPTION_', '')}:${format.percent(x.weight)}`).join(', ') }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                <td class="py-2 text-sm">{{ showValidatorName(item.voter) }}</td>
+                <td
+                  v-if="item.option && item.option !== 'VOTE_OPTION_UNSPECIFIED'"
+                  class="py-2 text-sm"
+                  :class="{
+                    'text-yes': item.option === 'VOTE_OPTION_YES',
+                    'text-gray-400': item.option === 'VOTE_OPTION_ABSTAIN',
+                  }"
+                >
+                  {{ String(item.option).replace('VOTE_OPTION_', '') }}
+                </td>
+                <td
+                  v-if="item.options"
+                  class="py-2 text-sm"
+                >
+                  {{ item.options.map(x => `${x.option.replace('VOTE_OPTION_', '')}:${format.percent(x.weight)}`).join(', ') }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <PaginationBar
           :limit="pageRequest.limit"
           :total="pageResponse.total"
           :callback="pageload"
+          :page="currentPage"
         />
       </div>
     </div>

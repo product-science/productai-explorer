@@ -11,6 +11,7 @@ import { computed } from '@vue/reactivity';
 import { onMounted, ref, watch } from 'vue';
 import { Icon } from '@iconify/vue';
 import Countdown from '@/components/Countdown.vue';
+import PaginationBar from '@/components/PaginationBar.vue';
 import { fromHex, toBase64 } from '@cosmjs/encoding';
 import type { Key, SlashingParam, Validator } from '@/types';
 import type { SigningInfo } from '@/types';
@@ -31,6 +32,16 @@ const tab = ref('active');
 const unbondList = ref([] as Validator[]);
 const slashing = ref({} as SlashingParam)
 const isHoveringNext = ref(false)
+
+// Epoch selector state (using PaginationBar)
+const selectedEpoch = ref<number | null>(null); // null = current epoch
+const loadingEpoch = ref(false);
+const epochTotal = computed(() => Number(chainStore.currentEpochIndex || 0) || 0);
+const currentEpochPage = computed(() => {
+    const currentIdx = epochTotal.value;
+    if (!currentIdx) return 1;
+    return selectedEpoch.value === null ? currentIdx : selectedEpoch.value;
+});
 
 // Next PoC mini widget state with phase switching
 const currentHeight = computed(() => Number(base.latest?.block?.header?.height || 0))
@@ -90,7 +101,18 @@ watch(() => currentHeight.value, async () => {
 })
 
 // Sorting state
-type SortKey = 'validator' | 'voting_power' | 'change24' | 'earned' | 'active' | 'reputation' | 'missed' | 'uptime'
+type SortKey =
+  | 'validator'
+  | 'voting_power'
+  | 'change24'
+  | 'earned'
+  | 'claimed'
+  | 'active'
+  | 'reputation'
+  | 'missed'
+  | 'uptime'
+  | 'inferences'
+  | 'missed_requests'
 const storedSortRaw = localStorage.getItem('validator-sort-by') as any
 const initialSortKey: SortKey = (storedSortRaw === 'rank' ? 'voting_power' : storedSortRaw) || 'voting_power'
 const sortBy = ref<SortKey>(initialSortKey)
@@ -187,6 +209,93 @@ function getValidatorBase64AddressFromOperator(operatorAddress: string): string 
     return getValidatorBase64Address(validator);
 }
 
+// Epoch performance helpers (for selected past epoch)
+function getEpochInferenceCount(operatorAddress: string): number {
+  const stats = validatorStore.getEpochPerformanceForSelectedEpoch(operatorAddress);
+  return stats?.inference_count || 0;
+}
+
+function getEpochMissedSummary(operatorAddress: string): string {
+  const stats = validatorStore.getEpochPerformanceForSelectedEpoch(operatorAddress);
+  if (!stats || !stats.inference_count) return '-';
+  const missed = Number(stats.missed_requests || 0);
+  const total = Number(stats.inference_count || 0);
+  if (!Number.isFinite(missed) || !Number.isFinite(total) || total <= 0) return '-';
+  const pct = missed / total;
+  return `${missed} (${format.percent(pct)})`;
+}
+
+// Handle epoch selection change
+async function handleEpochChange() {
+    // If switching to a past epoch, avoid sorting by columns that are hidden
+    const hiddenSortKeys: SortKey[] = ['change24', 'active', 'reputation', 'missed', 'uptime'];
+    if (selectedEpoch.value !== null && hiddenSortKeys.includes(sortBy.value)) {
+        sortBy.value = 'voting_power';
+        sortDesc.value = true;
+        localStorage.setItem('validator-sort-by', sortBy.value);
+        localStorage.setItem('validator-sort-desc', sortDesc.value.toString());
+    }
+    if (selectedEpoch.value === null) {
+        // Reset to current epoch
+        validatorStore.setSelectedEpoch(null);
+        return;
+    }
+    
+    loadingEpoch.value = true;
+    try {
+        // Set selected epoch in store
+        validatorStore.setSelectedEpoch(selectedEpoch.value);
+        // Fetch epoch data if not cached
+        await validatorStore.fetchEpochParticipants(selectedEpoch.value);
+        
+        // Fetch claimed amounts for this epoch
+        const operatorAddresses = validatorStore.participantsStakingData.map(v => v.operator_address);
+        await validatorStore.fetchClaimedAmounts(selectedEpoch.value, operatorAddresses);
+
+        // Log totals for debugging/analysis
+        if (list.value && list.value.length > 0) {
+            let totalEarned = 0n;
+            let totalClaimed = 0n;
+
+            list.value.forEach(item => {
+                const v = item.v;
+                const earnedStr = validatorStore.getEarnedCoins(v.operator_address) || '0';
+                const claimedStr = validatorStore.getClaimedAmount(v.operator_address) || '0';
+                
+                try {
+                    // Remove any non-numeric chars if necessary, but usually it's a clean string
+                    totalEarned += BigInt(earnedStr);
+                } catch (e) {}
+                try {
+                    totalClaimed += BigInt(claimedStr);
+                } catch (e) {}
+            });
+            
+            console.log(`Epoch ${selectedEpoch.value} Totals (from ${list.value.length} rows):`);
+            console.log(`Total Earned: ${format.formatToken({ amount: totalEarned.toString(), denom: 'ngonka' }, true, '0,0.[00]')}`);
+            console.log(`Total Claimed: ${format.formatToken({ amount: totalClaimed.toString(), denom: 'ngonka' }, true, '0,0.[00]')}`);
+        }
+    } catch (error) {
+        console.error('Error loading epoch data:', error);
+    } finally {
+        loadingEpoch.value = false;
+    }
+}
+
+async function handleEpochPageChange(page: number) {
+    const currentIdx = epochTotal.value;
+    if (!currentIdx) return;
+
+    // Last page corresponds to current epoch (no specific epoch selected in store)
+    if (page === currentIdx) {
+        selectedEpoch.value = null;
+    } else {
+        selectedEpoch.value = page;
+    }
+
+    await handleEpochChange();
+}
+
 onMounted(async () => {
     validatorStore.fetchUnbondingValidators().then((res) => {
         //unbondList.value = res.concat(unbondList.value);
@@ -278,6 +387,12 @@ const list = computed(() => {
                 return Number(votingPowerChange24(val) || 0)
             case 'earned':
                 return Number(validatorStore.getEarnedCoins(val.operator_address) || 0)
+            case 'claimed':
+                return Number(validatorStore.getClaimedAmount(val.operator_address) || 0)
+            case 'inferences':
+                return Number(getEpochInferenceCount(val.operator_address) || 0)
+            case 'missed_requests':
+                return Number(validatorStore.getEpochMissedPercentage(val.operator_address) || 0)
             case 'active':
                 return Number(validatorStore.getEpochsCompleted(val.operator_address) || 0)
             case 'reputation':
@@ -369,6 +484,19 @@ base.$subscribe((_, s) => {
     />
   </div>
 
+  <!-- Epoch selector (top) using PaginationBar -->
+  <div class="flex items-center justify-center mt-4 mb-2">
+    <div class="flex items-center gap-3">
+      <PaginationBar
+        :total="String(epochTotal)"
+        :limit="1"
+        :page="currentEpochPage"
+        :callback="handleEpochPageChange"
+        :loading="loadingEpoch"
+      />
+    </div>
+  </div>
+
   <div class="bg-base-100 rounded overflow-x-auto mt-4 shadow">
     <div class="pb-4">
       <table class="table validator-table w-full">
@@ -380,28 +508,62 @@ base.$subscribe((_, s) => {
             <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('voting_power')">
               <span class="inline-flex items-center justify-end w-full tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_voting_power')">{{ $t('validator.voting_power') }}<Icon :icon="sortIcon('voting_power')" class="ml-1" /></span>
             </th>
-            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('change24')">
+            <th v-if="selectedEpoch === null" scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('change24')">
               <span class="inline-flex items-center justify-end w-full tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_24h_changes')">{{ $t('validator.24h_changes') }}<Icon :icon="sortIcon('change24')" class="ml-1" /></span>
             </th>
-            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('earned')">
+            <th v-if="selectedEpoch === null" scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('earned')">
               <span class="inline-flex items-center justify-end w-full tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_earned')">{{ $t('validator.earned') }}<Icon :icon="sortIcon('earned')" class="ml-1" /></span>
             </th>
-            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('active')">
+            <th v-if="selectedEpoch !== null" scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('claimed')">
+              <span class="inline-flex items-center justify-end w-full tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_claimed') || 'Amount claimed for this epoch'">{{ $t('validator.claimed') || 'Claimed' }}<Icon :icon="sortIcon('claimed')" class="ml-1" /></span>
+            </th>
+            <th
+              v-if="selectedEpoch !== null"
+              scope="col"
+              class="text-right uppercase cursor-pointer select-none th-hover"
+              @click="toggleSort('inferences')"
+            >
+              <span
+                class="inline-flex items-center justify-end w-full tooltip tooltip-bottom"
+                :data-tip="$t('validator.hints.table_inference_count') || 'Number of successful inferences in this epoch'"
+              >
+                {{ $t('validator.inference_count') || 'Inferences' }}
+                <Icon :icon="sortIcon('inferences')" class="ml-1" />
+              </span>
+            </th>
+            <th
+              v-if="selectedEpoch !== null"
+              scope="col"
+              class="text-right uppercase cursor-pointer select-none th-hover"
+              @click="toggleSort('missed_requests')"
+            >
+              <span
+                class="inline-flex items-center justify-end w-full tooltip tooltip-bottom"
+                :data-tip="$t('validator.hints.table_missed_requests') || 'Missed requests (count and percentage of inferences) for this epoch'"
+              >
+                {{ $t('validator.missed_requests') || 'Missed req.' }}
+                <Icon :icon="sortIcon('missed_requests')" class="ml-1" />
+              </span>
+            </th>
+            <th v-if="selectedEpoch === null" scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('active')">
               <span class="inline-flex items-center justify-end w-full tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_active')">{{ $t('validator.active') }}<Icon :icon="sortIcon('active')" class="ml-1" /></span>
             </th>
-            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('reputation')">
+            <th v-if="selectedEpoch === null" scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('reputation')">
               <span class="inline-flex items-center justify-end w-full tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_reputation')">{{ $t('validator.reputation') }}<Icon :icon="sortIcon('reputation')" class="ml-1" /></span>
             </th>
-            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('missed')">
+            <th v-if="selectedEpoch === null" scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('missed')">
               <span class="inline-flex items-center justify-end w-full tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_missed_blocks')">{{ $t('validator.missed_blocks') }}<Icon :icon="sortIcon('missed')" class="ml-1" /></span>
             </th>
-            <th scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('uptime')">
+            <th v-if="selectedEpoch === null" scope="col" class="text-right uppercase cursor-pointer select-none th-hover" @click="toggleSort('uptime')">
               <span class="inline-flex items-center justify-end w-full tooltip tooltip-bottom" :data-tip="$t('validator.hints.table_uptime')">{{ $t('validator.uptime') }}<Icon :icon="sortIcon('uptime')" class="ml-1" /></span>
             </th>
           </tr>
         </thead>
         <tbody v-if="validatorStore.loading || !validatorStore.initialized">
-          <ValidatorListSkeleton :rows="20" />
+          <ValidatorListSkeleton
+            :rows="20"
+            :view-mode="selectedEpoch === null ? 'current' : 'past'"
+          />
         </tbody>
         <tbody v-else>
           <tr
@@ -484,11 +646,11 @@ base.$subscribe((_, s) => {
             <td class="text-right">
               <div class="flex flex-col">
                 <h6 class="text-sm font-weight-medium whitespace-nowrap ">
-                  {{ format.formatNumber(Number(validatorStore.getParticipant(v.operator_address)?.weight || 0), '0,0') }}
+                  {{ format.formatNumber(Number(validatorStore.getParticipantWeight(v.operator_address) || 0), '0,0') }}
                 </h6>
                 <span class="text-xs">{{
                   format.calculatePercent(
-                    Number(validatorStore.getParticipant(v.operator_address)?.weight || 0),
+                    Number(validatorStore.getParticipantWeight(v.operator_address) || 0),
                     validatorStore.totalPocWeight
                   )
                 }}</span>
@@ -496,28 +658,46 @@ base.$subscribe((_, s) => {
             </td>
             <!-- 👉 24h Changes -->
             <td
+              v-if="selectedEpoch === null"
               class="text-right text-xs"
               :class="votingPowerChange24Color(v)"
             >
               {{ votingPowerChange24Text(v) }}
             </td>
-            <!-- 👉 Earned -->
-            <td class="text-right text-xs">
+            <!-- 👉 Earned (only show for current epoch; hide for previous epochs while we refine calculations) -->
+            <td v-if="selectedEpoch === null" class="text-right text-xs">
               {{ format.formatToken({
                 amount: validatorStore.getEarnedCoins(v.operator_address), 
                 denom: 'ngonka'
               }, true, '0,0.[00]') }}
             </td>
+            <!-- 👉 Claimed (only show for past epochs) -->
+            <td v-if="selectedEpoch !== null" class="text-right text-xs">
+              <div class="tooltip" :data-tip="validatorStore.getClaimedDetails(v.operator_address) || undefined">
+                {{ format.formatToken({
+                  amount: validatorStore.getClaimedAmount(v.operator_address), 
+                  denom: 'ngonka'
+                }, true, '0,0.[00]') }}
+              </div>
+            </td>
+            <!-- 👉 Inference count (past epochs) -->
+            <td v-if="selectedEpoch !== null" class="text-right text-xs">
+              {{ format.formatNumber(getEpochInferenceCount(v.operator_address), '0,0') }}
+            </td>
+            <!-- 👉 Missed requests (count + percentage of inferences, past epochs) -->
+            <td v-if="selectedEpoch !== null" class="text-right text-xs">
+              {{ getEpochMissedSummary(v.operator_address) }}
+            </td>
             <!-- 👉 Active -->
-            <td class="text-right text-xs">
+            <td v-if="selectedEpoch === null" class="text-right text-xs">
               {{ validatorStore.getEpochsCompleted(v.operator_address) }}
             </td>
             <!-- 👉 Reputation -->
-            <td class="text-right text-xs">
+            <td v-if="selectedEpoch === null" class="text-right text-xs">
               {{ validatorStore.getReputation(v.operator_address) }}
             </td>
             <!-- 👉 Missed Blocks -->
-            <td class="text-right text-xs">
+            <td v-if="selectedEpoch === null" class="text-right text-xs">
               <span 
                 :class="{
                   'text-green-600': getMissedBlocksCounter(v.operator_address) <= 10,
@@ -529,7 +709,7 @@ base.$subscribe((_, s) => {
               </span>
             </td>
             <!-- 👉 Uptime -->
-            <td class="text-right text-xs">
+            <td v-if="selectedEpoch === null" class="text-right text-xs">
               <span 
                 :class="{
                   'text-green-600': getUptimePercentage(v.operator_address) >= 95,
@@ -543,6 +723,19 @@ base.$subscribe((_, s) => {
           </tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- Epoch selector (bottom) using PaginationBar -->
+  <div class="flex items-center justify-center mt-4 mb-2">
+    <div class="flex items-center gap-3">
+      <PaginationBar
+        :total="String(epochTotal)"
+        :limit="1"
+        :page="currentEpochPage"
+        :callback="handleEpochPageChange"
+        :loading="loadingEpoch"
+      />
     </div>
   </div>
 </div>

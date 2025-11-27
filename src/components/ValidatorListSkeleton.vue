@@ -1,19 +1,29 @@
 <script lang="ts" setup>
 import { computed } from 'vue'
 
-const props = defineProps({
-  rows: { type: Number, default: 10 },
-  opacities: { type: Array as () => number[] | undefined, default: undefined },
-})
+type SkeletonViewMode = 'current' | 'past'
+
+const props = defineProps<{
+  rows?: number
+  opacities?: number[]
+  /**
+   * Layout variant:
+   * - 'current' → columns for current epoch (24h, earned, active, reputation, missed blocks, uptime)
+   * - 'past'    → columns for past epochs (claimed, inference count, missed requests)
+   */
+  viewMode?: SkeletonViewMode
+}>()
 
 const rowOpacities = computed(() => {
   if (props.opacities && props.opacities.length > 0) return props.opacities as number[]
   const count = props.rows || 10
   const start = 0.8 // 80%
-  const end = 0.1   // 10%
+  const end = 0.1 // 10%
   const step = count > 1 ? (start - end) / (count - 1) : 0
   return Array.from({ length: count }, (_, i) => Number((start - i * step).toFixed(2)))
 })
+
+const viewMode = computed<SkeletonViewMode>(() => props.viewMode || 'current')
 </script>
 
 <template>
@@ -40,35 +50,73 @@ const rowOpacities = computed(() => {
       </div>
     </td>
 
-    <!-- 24h Changes -->
-    <td class="text-right">
-      <div class="h-3 w-14 bg-black rounded" :style="{ opacity }"></div>
-    </td>
+    <!-- Columns differ between current and past epoch views -->
+    <template v-if="viewMode === 'current'">
+      <!-- 24h Changes -->
+      <td class="text-right">
+        <div class="flex justify-end">
+          <div class="h-3 w-14 bg-black rounded" :style="{ opacity }"></div>
+        </div>
+      </td>
 
-    <!-- Earned -->
-    <td class="text-right">
-      <div class="h-3 w-16 bg-black rounded" :style="{ opacity }"></div>
-    </td>
+      <!-- Earned -->
+      <td class="text-right">
+        <div class="flex justify-end">
+          <div class="h-3 w-16 bg-black rounded" :style="{ opacity }"></div>
+        </div>
+      </td>
 
-    <!-- Active -->
-    <td class="text-right">
-      <div class="h-3 w-10 bg-black rounded" :style="{ opacity }"></div>
-    </td>
+      <!-- Active -->
+      <td class="text-right">
+        <div class="flex justify-end">
+          <div class="h-3 w-10 bg-black rounded" :style="{ opacity }"></div>
+        </div>
+      </td>
 
-    <!-- Reputation -->
-    <td class="text-right">
-      <div class="h-3 w-10 bg-black rounded" :style="{ opacity }"></div>
-    </td>
+      <!-- Reputation -->
+      <td class="text-right">
+        <div class="flex justify-end">
+          <div class="h-3 w-10 bg-black rounded" :style="{ opacity }"></div>
+        </div>
+      </td>
 
-    <!-- Missed Blocks -->
-    <td class="text-right">
-      <div class="h-3 w-12 bg-black rounded" :style="{ opacity }"></div>
-    </td>
+      <!-- Missed Blocks -->
+      <td class="text-right">
+        <div class="flex justify-end">
+          <div class="h-3 w-12 bg-black rounded" :style="{ opacity }"></div>
+        </div>
+      </td>
 
-    <!-- Uptime -->
-    <td class="text-right">
-      <div class="h-3 w-14 bg-black rounded" :style="{ opacity }"></div>
-    </td>
+      <!-- Uptime -->
+      <td class="text-right">
+        <div class="flex justify-end">
+          <div class="h-3 w-14 bg-black rounded" :style="{ opacity }"></div>
+        </div>
+      </td>
+    </template>
+
+    <template v-else>
+      <!-- Claimed (past epochs) -->
+      <td class="text-right">
+        <div class="flex justify-end">
+          <div class="h-3 w-20 bg-black rounded" :style="{ opacity }"></div>
+        </div>
+      </td>
+
+      <!-- Inference count -->
+      <td class="text-right">
+        <div class="flex justify-end">
+          <div class="h-3 w-16 bg-black rounded" :style="{ opacity }"></div>
+        </div>
+      </td>
+
+      <!-- Missed requests -->
+      <td class="text-right">
+        <div class="flex justify-end">
+          <div class="h-3 w-24 bg-black rounded" :style="{ opacity }"></div>
+        </div>
+      </td>
+    </template>
   </tr>
 </template>
 

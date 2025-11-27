@@ -6,6 +6,7 @@ import {
 } from '@/stores';
 import DynamicComponent from '@/components/dynamic/DynamicComponent.vue';
 import DonutChart from '@/components/charts/DonutChart.vue';
+import PaginationBar from '@/components/PaginationBar.vue';
 import { computed, ref } from '@vue/reactivity';
 import { onMounted } from 'vue';
 import { Icon } from '@iconify/vue';
@@ -32,6 +33,10 @@ const recentReceived = ref([] as TxResponse[]);
 const recentReceivedTransfers = ref([] as TxResponse[])
 const recentMintsOrKeeper = ref([] as TxResponse[])
 const vestingRewardsTxs = ref([] as TxResponse[])
+const allVestingRewardsTxs = ref([] as TxResponse[])
+const vestingRewardsTotal = ref('0')
+const vestingRewardsPage = ref(1)
+const vestingRewardsLimit = 50
 const inferences = ref({ stats: [] } as InferenceResponse);
 const chart = {};
 
@@ -110,14 +115,11 @@ function loadAccount(address: string) {
     });
 
   // Vesting reward transactions
-  const vestQuery = `?events=vest_reward.participant='${address}'&pagination.reverse=true&pagination.limit=50`;
-  blockchain.rpc.getTxs(vestQuery, {})
-    .then((res: any) => {
-      vestingRewardsTxs.value = res?.tx_responses || [];
-    })
-    .catch(() => {
-      vestingRewardsTxs.value = [];
-    });
+  // Start from the LAST page so newest vesting reward txs show first,
+  // while still keeping server-side pagination for the table.
+  initVestingRewards(address);
+  // Also load **all** vesting reward txs for analytics (e.g. pie charts)
+  loadAllVestingRewards(address);
 
   // Load inference stats
   loadInferenceStats(address);
@@ -149,30 +151,52 @@ function mapAmount(events: {type: string, attributes: {key: string, value: strin
     .map(x => x.value)
 }
 
-function mapVestingRewardAmount(events: {type: string, attributes: {key: string, value: string}[]}[]) {
-  if (!events) return []
-  const decodeKey = (k: string) => (k === 'YW1vdW50' ? 'amount' : k)
-  const evt = events.find(x => x.type === 'vest_reward')
-  if (!evt) return []
-  // Parse cosmos amount strings like "12345ngonka,6789ugonka" and format to display denom
-  const values: string[] = []
-  evt.attributes
-    .filter(x => decodeKey(x.key) === 'amount')
-    .forEach(x => {
-      const parts = (x.value || '').split(',').map(p => p.trim()).filter(Boolean)
-      parts.forEach(p => {
-        const m = p.match(/^(\d+)([a-zA-Z][\w\/-]*)$/)
-        if (m) {
-          const amount = m[1]
-          const denom = m[2]
-          values.push(format.formatToken({ amount, denom }, true, '0,0.[00]'))
-        } else {
-          // Fallback: return raw part
-          values.push(p)
-        }
-      })
-    })
-  return values
+function getVestingRewardDetails(events: any[]) {
+  if (!events) return { total: '-', details: '' };
+  
+  const decodeKey = (k: string) => (k === 'YW1vdW50' ? 'amount' : k);
+  const evts = events.filter((x: any) => x.type === 'vest_reward');
+  if (!evts.length) return { total: '-', details: '' };
+
+  const totals: Record<string, bigint> = {};
+  const individualAmounts: string[] = [];
+  const unparsed: string[] = [];
+
+  evts.forEach((evt: any) => {
+    evt.attributes
+      .filter((x: any) => decodeKey(x.key) === 'amount')
+      .forEach((x: any) => {
+        const parts = (x.value || '').split(',').map((p: string) => p.trim()).filter(Boolean);
+        parts.forEach((p: string) => {
+          const m = p.match(/^(\d+)([a-zA-Z][\w\/-]*)$/);
+          if (m) {
+            const amountStr = m[1];
+            const denom = m[2];
+            const amt = BigInt(amountStr);
+            
+            if (!totals[denom]) totals[denom] = BigInt(0);
+            totals[denom] += amt;
+            
+            individualAmounts.push(format.formatToken({ amount: amountStr, denom }, true, '0,0.[00]'));
+          } else {
+            unparsed.push(p);
+            individualAmounts.push(p);
+          }
+        });
+      });
+  });
+
+  const totalStrings = Object.entries(totals).map(([denom, amt]) => {
+    return format.formatToken({ amount: amt.toString(), denom }, true, '0,0.[00]');
+  });
+  
+  // Append unparsed strings to total if any
+  unparsed.forEach(u => totalStrings.push(u));
+  
+  const total = totalStrings.join(', ') || '-';
+  const details = individualAmounts.join(' + ');
+  
+  return { total, details };
 }
 
 function getEpochIndexFromTx(v: TxResponse): string {
@@ -241,6 +265,88 @@ function refreshSeriesColors(){
   const rewardHex = getCssColorForClass('text-success')
   const fallback = '#666CFF'
   seriesColors.value = [balanceHex || fallback, rewardHex || fallback]
+}
+
+async function initVestingRewards(address: string) {
+  const baseQuery = (page: number) =>
+    `?query=vest_reward.participant='${address}'&limit=${vestingRewardsLimit}&page=${page}`;
+
+  try {
+    // First request to learn the total
+    const first: any = await blockchain.rpc.getTxs(baseQuery(1), {});
+    const totalStr = first?.total;
+    const total = totalStr != null ? Number(totalStr) : NaN;
+
+    // If only one page or total unknown, just use the first page
+    if (Number.isNaN(total) || total <= vestingRewardsLimit) {
+      vestingRewardsTxs.value = first?.tx_responses || [];
+      vestingRewardsTotal.value = totalStr || String(vestingRewardsTxs.value.length || 0);
+      vestingRewardsPage.value = 1;
+      return;
+    }
+
+    const lastPage = Math.max(1, Math.ceil(total / vestingRewardsLimit));
+    const last: any = await blockchain.rpc.getTxs(baseQuery(lastPage), {});
+    vestingRewardsTxs.value = last?.tx_responses || [];
+    vestingRewardsTotal.value = totalStr || String(vestingRewardsTxs.value.length || 0);
+    vestingRewardsPage.value = lastPage;
+  } catch (_) {
+    // Fallback to existing single-page loader if anything goes wrong
+    loadVestingRewards(address, 1);
+  }
+}
+
+function loadVestingRewards(address: string, page: number) {
+  vestingRewardsPage.value = page
+  const vestQuery = `?query=vest_reward.participant='${address}'&limit=${vestingRewardsLimit}&page=${page}`;
+  blockchain.rpc.getTxs(vestQuery, {})
+    .then((res: any) => {
+      vestingRewardsTxs.value = res?.tx_responses || [];
+      vestingRewardsTotal.value = res?.total || vestingRewardsTotal.value || '0';
+    })
+    .catch(() => {
+      vestingRewardsTxs.value = [];
+      vestingRewardsTotal.value = '0';
+    });
+}
+
+async function loadAllVestingRewards(address: string) {
+  const all: TxResponse[] = []
+  let page = 1
+  const limit = vestingRewardsLimit
+
+  try {
+    // Keep fetching pages until we've exhausted results or reached the reported total
+    while (true) {
+      const vestQuery = `?query=vest_reward.participant='${address}'&limit=${limit}&page=${page}`;
+      const res: any = await blockchain.rpc.getTxs(vestQuery, {})
+      const items: TxResponse[] = res?.tx_responses || []
+
+      if (!items.length) break
+
+      all.push(...items)
+
+      const totalStr = res?.total
+      const total = totalStr != null ? Number(totalStr) : NaN
+
+      // Stop when either we know we've reached total, or this page was not full
+      if (!Number.isNaN(total) && all.length >= total) break
+      if (items.length < limit) break
+
+      page += 1
+    }
+
+    allVestingRewardsTxs.value = all
+    // Ensure total reflects all fetched txs for consumers like pie charts/pagination
+    vestingRewardsTotal.value = String(all.length || 0)
+  } catch (_) {
+    // On failure, don't break the UI – just fall back to current page data
+    allVestingRewardsTxs.value = []
+  }
+}
+
+function onVestingRewardsPageChange(page: number) {
+  loadVestingRewards(props.address, page);
 }
 </script>
 <template>
@@ -551,8 +657,8 @@ function refreshSeriesColors(){
                 </RouterLink>
               </td>
               <td class="flex items-center py-3">
-                <div class="mr-2">
-                  {{ mapVestingRewardAmount(v.events)?.join(", ")}}
+                <div class="mr-2 tooltip" :data-tip="getVestingRewardDetails(v.events).details">
+                  {{ getVestingRewardDetails(v.events).total }}
                 </div>
                 <Icon
                   v-if="v.code === 0"
@@ -565,6 +671,12 @@ function refreshSeriesColors(){
           </tbody>
         </table>
       </div>
+      <PaginationBar 
+        :total="vestingRewardsTotal" 
+        :limit="vestingRewardsLimit" 
+        :callback="onVestingRewardsPageChange"
+        :page="vestingRewardsPage"
+      />
     </div>
 
     <!-- Account -->

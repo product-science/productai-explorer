@@ -300,8 +300,10 @@ export class CosmosRestClient extends BaseRestClient<RequestRegistry> {
   async getTxs(query: string, params: any, page?: PageRequest) {
     if(!page) page = new PageRequest()
     // Avoid duplicating pagination params if caller already provided them
+    // Check for both pagination.* format and limit/page format
     const hasPagination = /[?&]pagination\./.test(query)
-    const paginationSuffix = hasPagination ? '' : `&${page.toQueryString()}`
+    const hasLimitPage = /[?&](limit|page)=/.test(query)
+    const paginationSuffix = (hasPagination || hasLimitPage) ? '' : `&${page.toQueryString()}`
 
     // Always use query= key; rewrite legacy events= to query=
     const preferQuery = query.includes('events=') ? query.replaceAll('events=', 'query=') : query
