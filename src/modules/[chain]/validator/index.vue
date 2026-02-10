@@ -18,6 +18,7 @@ import type { SigningInfo } from '@/types';
 import { consensusPubkeyToHexAddress, valconsToBase64 } from '@/libs';
 import CardStatisticsVertical from '@/components/CardStatisticsVertical.vue';
 import ValidatorListSkeleton from '@/components/ValidatorListSkeleton.vue';
+import { useWindowSize } from '@vueuse/core';
 
 
 const validatorStore = useValidatorStore();
@@ -42,6 +43,10 @@ const currentEpochPage = computed(() => {
     if (!currentIdx) return 1;
     return selectedEpoch.value === null ? currentIdx : selectedEpoch.value;
 });
+
+// Responsive pagination
+const { width } = useWindowSize();
+const maxVisiblePages = computed(() => (width.value < 640 ? 3 : 5));
 
 // Next PoC mini widget state with phase switching
 const currentHeight = computed(() => Number(base.latest?.block?.header?.height || 0))
@@ -491,8 +496,10 @@ base.$subscribe((_, s) => {
         :total="String(epochTotal)"
         :limit="1"
         :page="currentEpochPage"
+        :min-page="72"
         :callback="handleEpochPageChange"
         :loading="loadingEpoch"
+        :max-visible="maxVisiblePages"
       />
     </div>
   </div>
@@ -733,8 +740,10 @@ base.$subscribe((_, s) => {
         :total="String(epochTotal)"
         :limit="1"
         :page="currentEpochPage"
+        :min-page="72"
         :callback="handleEpochPageChange"
         :loading="loadingEpoch"
+        :max-visible="maxVisiblePages"
       />
     </div>
   </div>

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { useGovStore } from '@/stores';
+import { useGovStore, useValidatorStore } from '@/stores';
 import ProposalListItem from '@/components/ProposalListItem.vue';
 import ProposalListSkeleton from '@/components/ProposalListSkeleton.vue';
 import { ref, onMounted } from 'vue';
@@ -8,10 +8,12 @@ import { PageRequest } from '@/types';
 
 const tab = ref('2');
 const store = useGovStore();
+const validatorStore = useValidatorStore();
 const pageRequest = ref(new PageRequest())
 
 onMounted(() => {
   console.log('gov index onMounted');  
+  validatorStore.init(); // Initialize validator data for the list (ProposalProcess)
   store.fetchProposals('2').then((x) => {
     if (x?.proposals?.length === 0) {
       tab.value = '3';

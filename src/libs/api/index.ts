@@ -175,6 +175,10 @@ export const DEFAULT: RequestRegistry = {
     url: '/ibc/core/channel/v1/channels/{channel_id}/ports/{port_id}/packet_acknowledgements',
     adapter,
   },
+  ibc_core_channel_channels_channel_id_port_id: {
+    url: '/ibc/core/channel/v1/channels/{channel_id}/ports/{port_id}',
+    adapter,
+  },
   ibc_core_channel_connections_channels: {
     url: '/ibc/core/channel/v1/connections/{connection_id}/channels',
     adapter,

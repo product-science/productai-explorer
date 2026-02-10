@@ -25,6 +25,16 @@ export function operatorAddressToAccount(operAddress?: string) {
   return toBech32(prefix.replace('valoper', ''), data);
 }
 
+export function accountToOperatorAddress(accountAddress?: string) {
+  if (!accountAddress) return '';
+  try {
+    const { prefix, data } = fromBech32(accountAddress);
+    return toBech32(prefix + 'valoper', data);
+  } catch (e) {
+    return '';
+  }
+}
+
 export function consensusPubkeyToHexAddress(consensusPubkey?: {
   '@type': string;
   key: string;

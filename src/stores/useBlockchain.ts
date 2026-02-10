@@ -56,7 +56,7 @@ export const useBlockchain = defineStore('blockchain', {
       nextPocValidationStart: null as number | null,
       nextPocValidationEnd: null as number | null,
       nextSetNewValidators: null as number | null,
-      
+
     };
   },
   getters: {
@@ -64,7 +64,7 @@ export const useBlockchain = defineStore('blockchain', {
       const chain = this.dashboard.chains[this.chainName]
       // update chain config with dynamic updated sdk version
       const sdkversion = localStorage.getItem(`sdk_version_${this.chainName}`)
-      if(sdkversion && chain?.versions) {
+      if (sdkversion && chain?.versions) {
         chain.versions.cosmosSdk = sdkversion;
       }
       return chain;
@@ -94,7 +94,7 @@ export const useBlockchain = defineStore('blockchain', {
         if (this.current?.themeColor) {
           const { color } = hexToRgb(this.current?.themeColor);
           const { h, s, l } = rgbToHsl(color);
-          const themeColor = h + ' ' + s + '% ' + l +'%';
+          const themeColor = h + ' ' + s + '% ' + l + '%';
           document.body.style.setProperty('--p', `${themeColor}`);
           // document.body.style.setProperty('--p', `${this.current?.themeColor}`);
         } else {
@@ -140,7 +140,7 @@ export const useBlockchain = defineStore('blockchain', {
 
       // combine all together
       const menuItems: VerticalNavItems = [...currNavItem];
-      
+
       // Only add ecosystem section if there is more than one chain
       if (this.dashboard.length > 1) {
         menuItems.push(
@@ -169,42 +169,53 @@ export const useBlockchain = defineStore('blockchain', {
   },
   actions: {
     async initial(force = false) {
-      if (this.isInitializing) return;
+      if ((this as any)._initPromise) {
+        return (this as any)._initPromise;
+      }
+
       // Fetch ABCI info to persist SDK version for API registry selection
       await useParamStore().handleAbciInfo();
       const currentEndpoint = this.endpoint?.address || '';
       if (!force && this.lastInitializedChain === this.chainName && this.lastInitializedEndpoint === currentEndpoint) {
         return;
       }
-      this.isInitializing = true;
-      // this.current?.themeColor {
-      //     const { global } = useTheme();
-      //     global.current
-      // }
-      useWalletStore().$reset();
-      if (!this.isConsumerChain) {
-        await useStakingStore().init();
-      }
-      useBankStore().initial();
-      useBaseStore().initial();
-      // Avoid resetting gov data if already loading/loaded for this chain
-      const gov = useGovStore();
-      const govLoading = gov.loading?.['2'];
-      if (govLoading === LoadingStatus.Loaded || govLoading === LoadingStatus.Loading) {
-        // Optional: refresh params only
-        try { await gov.fetchParams(); } catch {}
-      } else {
-        useGovStore().initial();
-      }
-      useMintStore().initial();
-      useBlockModule().initial();
-      useDistributionStore().initial();
-      this.lastInitializedChain = this.chainName;
-      this.lastInitializedEndpoint = currentEndpoint;
-      this.isInitializing = false;
+
+      (this as any)._initPromise = (async () => {
+        try {
+          this.isInitializing = true;
+          // this.current?.themeColor {
+          //     const { global } = useTheme();
+          //     global.current
+          // }
+          useWalletStore().$reset();
+          if (!this.isConsumerChain) {
+            await useStakingStore().init();
+          }
+          useBankStore().initial();
+          useBaseStore().initial();
+          // Avoid resetting gov data if already loading/loaded for this chain
+          const gov = useGovStore();
+          const govLoading = gov.loading?.['2'];
+          if (govLoading === LoadingStatus.Loaded || govLoading === LoadingStatus.Loading) {
+            // Optional: refresh params only
+            try { await gov.fetchParams(); } catch { }
+          } else {
+            useGovStore().initial();
+          }
+          useMintStore().initial();
+          useBlockModule().initial();
+          useDistributionStore().initial();
+          this.lastInitializedChain = this.chainName;
+          this.lastInitializedEndpoint = currentEndpoint;
+        } finally {
+          this.isInitializing = false;
+          (this as any)._initPromise = null;
+        }
+      })();
+      return (this as any)._initPromise;
     },
 
-    randomEndpoint(chainName: string) : Endpoint | undefined {
+    randomEndpoint(chainName: string): Endpoint | undefined {
       const end = localStorage.getItem(`endpoint-${chainName}`);
       if (end) {
         return JSON.parse(end);
@@ -220,7 +231,7 @@ export const useBlockchain = defineStore('blockchain', {
 
     async randomSetupEndpoint() {
       const endpoint = this.randomEndpoint(this.chainName)
-      if(endpoint) await this.setRestEndpoint(endpoint);
+      if (endpoint) await this.setRestEndpoint(endpoint);
     },
 
     async setRestEndpoint(endpoint: Endpoint) {
@@ -231,7 +242,7 @@ export const useBlockchain = defineStore('blockchain', {
         `endpoint-${this.chainName}`,
         JSON.stringify(endpoint)
       );
-      
+
       // Setup inference API endpoint if available
       this.setupInferenceApi();
     },
@@ -264,7 +275,7 @@ export const useBlockchain = defineStore('blockchain', {
       if (!this.inferenceApiEndpoint) {
         throw new Error('Inference API endpoint not configured');
       }
-      
+
       const url = `${this.inferenceApiEndpoint}/v1/participants`;
       return await post(url, data);
     },
@@ -273,7 +284,7 @@ export const useBlockchain = defineStore('blockchain', {
       if (!this.inferenceApiEndpoint) {
         throw new Error('Inference API endpoint not configured');
       }
-      
+
       const url = `${this.inferenceApiEndpoint}/v1/participants`;
       return await get(url);
     },
@@ -289,7 +300,7 @@ export const useBlockchain = defineStore('blockchain', {
       if (!this.inferenceApiEndpoint) {
         throw new Error('Inference API endpoint not configured');
       }
-      
+
       const url = `${this.inferenceApiEndpoint}/v1/participants/${address}`;
       return await get(url);
     },
@@ -298,9 +309,9 @@ export const useBlockchain = defineStore('blockchain', {
       if (!this.inferenceApiEndpoint) {
         throw new Error('Inference API endpoint not configured');
       }
-      
+
       const url = `${this.inferenceApiEndpoint}${endpoint}`;
-      
+
       if (method === 'POST') {
         return await post(url, data);
       } else {
@@ -313,7 +324,7 @@ export const useBlockchain = defineStore('blockchain', {
       if (!this.endpoint.address) {
         throw new Error('Chain API endpoint not configured');
       }
-      
+
       const url = `${this.endpoint.address}/productscience/inference/inference/liquidity_pool`;
       return await get(url);
     },
@@ -331,7 +342,7 @@ export const useBlockchain = defineStore('blockchain', {
       if (!this.endpoint.address) {
         throw new Error('Chain API endpoint not configured');
       }
-      
+
       const url = `${this.endpoint.address}/productscience/inference/inference/wrapped_token_balances/${address}`;
       return await get(url);
     },
@@ -350,11 +361,11 @@ export const useBlockchain = defineStore('blockchain', {
       if (!this.endpoint.address) {
         throw new Error('Chain API endpoint not configured');
       }
-      
+
       const query = JSON.stringify({ calculate_tokens: { usd_amount: usdAmount } });
       const encodedQuery = btoa(query);
       const url = `${this.endpoint.address}/cosmwasm/wasm/v1/contract/${poolAddress}/smart/${encodedQuery}`;
-      
+
       return await get(url);
     },
 
@@ -412,13 +423,13 @@ export const useBlockchain = defineStore('blockchain', {
     },
     async setCurrent(name: string) {
       // Ensure chains are loaded due to asynchronous calls.
-      if(this.dashboard.length === 0) {
+      if (this.dashboard.length === 0) {
         await this.dashboard.initial();
       }
 
       // Find the case-sensitive name for the chainName, else simply use the parameter-value.
-      const caseSensitiveName = 
-        Object.keys(this.dashboard.chains).find((x) => x.toLowerCase() === name.toLowerCase()) 
+      const caseSensitiveName =
+        Object.keys(this.dashboard.chains).find((x) => x.toLowerCase() === name.toLowerCase())
         || name;
 
       // Update chainName if needed

@@ -80,7 +80,7 @@ export interface RequestRegistry extends AbstractRegistry {
   distribution_community_pool: Request<{ pool: Coin[] }>;
   distribution_delegator_rewards: Request<{
     rewards: {
-      validator_address: string, 
+      validator_address: string,
       reward: Coin[]
     }[],
     total: Coin[]
@@ -95,7 +95,7 @@ export interface RequestRegistry extends AbstractRegistry {
   }>;
   mint_annual_provisions: Request<{ annual_provisions: string }>;
 
-  slashing_params: Request<{params: SlashingParam}>;
+  slashing_params: Request<{ params: SlashingParam }>;
   slashing_signing_info: Request<PaginatedSigningInfo>;
 
   gov_params_voting: Request<GovParams>;
@@ -129,7 +129,7 @@ export interface RequestRegistry extends AbstractRegistry {
   base_tendermint_validatorsets_latest: Request<PaginatedTendermintValidator>;
   base_tendermint_validatorsets_height: Request<PaginatedTendermintValidator>;
 
-  params: Request<{param: any}>;
+  params: Request<{ param: any }>;
 
   group_groups: Request<PaginatedGroups>;
   group_groups_by_admin: Request<PaginatedGroups>;
@@ -158,14 +158,19 @@ export interface RequestRegistry extends AbstractRegistry {
       revision_height: string;
     };
   }>;
+  ibc_core_channel_channels_channel_id_port_id: Request<{
+    channel: any;
+    proof: string;
+    proof_height: any;
+  }>;
   ibc_core_channel_channels_acknowledgements: Request<any>;
   ibc_core_channel_connections_channels: Request<PaginatedIBCChannels>;
   ibc_core_connection_connections: Request<PaginatedIBCConnections>;
   ibc_core_connection_connections_connection_id: Request<ConnectionWithProof>;
   ibc_core_connection_connections_connection_id_client_state: Request<ClientStateWithProof>;
-  interchain_security_ccv_provider_validator_consumer_addr: Request<{consumer_address: string}>
-  interchain_security_provider_opted_in_validators: Request<{validators_provider_addresses: string[]}>
-  interchain_security_consumer_validators: Request<{validators: {provider_address: string, consumer_key: {ed25519: string}, power: string}[]}>
+  interchain_security_ccv_provider_validator_consumer_addr: Request<{ consumer_address: string }>
+  interchain_security_provider_opted_in_validators: Request<{ validators_provider_addresses: string[] }>
+  interchain_security_consumer_validators: Request<{ validators: { provider_address: string, consumer_key: { ed25519: string }, power: string }[] }>
 }
 
 export function adapter<T>(source: any): Promise<T> {

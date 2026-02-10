@@ -296,7 +296,15 @@
     "memo": "메모",
     "status": "상태",
     "no_messages": "메시지 없음",
-    "meta_description": "최근 블록의 트랜잭션만 표시합니다 (AI 추론, 코인 전송 및 기타 작업)."
+    "meta_description": "최근 블록의 트랜잭션만 표시합니다 (AI 추론, 코인 전송 및 기타 작업).",
+    "msg_type": "Msg Type",
+    "creator": "Creator",
+    "total_stat": "Total (Count / Gas)",
+    "failed_stat": "Failed (Count / Gas)",
+    "failed": "Failed",
+    "error": "Error",
+    "show_more": "Show More",
+    "no_filter_match": "No transactions match the selected filter."
   },
   "uptime": {
     "overall": "전체",

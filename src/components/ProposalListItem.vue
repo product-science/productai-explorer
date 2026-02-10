@@ -10,6 +10,7 @@ import type { PaginatedProposals } from '@/types';
 import ProposalProcess from './ProposalProcess.vue';
 import type { PropType } from 'vue';
 import { computed, ref } from 'vue';
+import { formatProposalType } from '@/libs/utils';
 const dialog = useTxDialog();
 defineProps({
   proposals: { type: Object as PropType<PaginatedProposals> },
@@ -18,12 +19,6 @@ defineProps({
 const format = useFormatter();
 const staking = useStakingStore();
 const chain = useBlockchain();
-function showType(v: string) {
-  if (v) {
-    return v.substring(v.lastIndexOf('.') + 1);
-  }
-  return v;
-}
 
 const statusMap: Record<string, string> = {
   PROPOSAL_STATUS_VOTING_PERIOD: 'VOTING',
@@ -40,7 +35,7 @@ const voterStatusMap: Record<string, string> = {
 const proposalInfo = ref();
 
 function metaItem(metadata: string|undefined): { title: string; summary: string } {
-  return metadata ? JSON.parse(metadata) : {}
+  return metadata ? JSON.parse(metadata) : { title: '', summary: '' }
 }
 
 </script>
@@ -70,7 +65,7 @@ function metaItem(metadata: string|undefined): { title: string; summary: string 
                 v-if="item.content"
                 class="bg-[#f6f2ff] text-[#9c6cff] dark:bg-gray-600 dark:text-gray-300 inline-block rounded-full px-2 py-[1px] text-xs mb-1"
               >
-                {{ showType(item.content['@type']) }} 
+                {{ formatProposalType(item.content['@type']) }} 
               </div>
             </div>
           </td>
@@ -167,7 +162,7 @@ function metaItem(metadata: string|undefined): { title: string; summary: string 
               v-if="item.content"
               class="bg-[#f6f2ff] text-[#9c6cff] dark:bg-gray-600 dark:text-gray-300 inline-block rounded-full px-2 py-[1px] text-xs mb-1"
             >
-              {{ showType(item.content['@type']) }}
+              {{ formatProposalType(item.content['@type']) }}
             </div>
           </div>
 

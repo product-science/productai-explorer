@@ -5,6 +5,7 @@ import { useBaseStore } from './useBaseStore';
 import { useFormatter } from './useFormatter';
 import { useStakingStore } from './useStakingStore';
 import { get } from '@/libs/http';
+import { accountToOperatorAddress } from '@/libs/address';
 import type { Validator } from '@/types';
 import { PageRequest } from '@/types';
 
@@ -77,8 +78,11 @@ export interface EpochPerformanceSummaryResponse {
 }
 
 export interface EpochPerformanceStats {
+  epoch_index: number;
+  validator_address: string;
   inference_count: number;
   missed_requests: number;
+  active_score: number;
 }
 
 export const useValidatorStore = defineStore('validatorStore', {
@@ -104,8 +108,10 @@ export const useValidatorStore = defineStore('validatorStore', {
     epochDataCache: {} as Record<number, {
       participants: Record<string, Participant>;
       weights: Record<string, number>; // This will store Effective Weight before capping
+      weightsByAccount: Record<string, number>; // Effective Weight by Account
       cappedWeights: Record<string, number>; // This will store Final Capped Weight
       models: Record<string, string[]>;
+      totalPower: number;
     }>,
     selectedEpochIndex: null as number | null, // null = current epoch
     // Claimed amounts cache: epochIndex -> operatorAddress -> { total, details }
@@ -233,8 +239,8 @@ export const useValidatorStore = defineStore('validatorStore', {
       const pocEntries = Object.entries(this.pocWeights || {});
       const items: WeightedParticipant[] = pocEntries.length
         ? pocEntries
-            .map(([op, w]) => ({ op, weight: (BigInt(Math.max(0, Math.floor(Number(w)))) * SCALE) }))
-            .filter((x) => x.weight > 0n)
+          .map(([op, w]) => ({ op, weight: (BigInt(Math.max(0, Math.floor(Number(w)))) * SCALE) }))
+          .filter((x) => x.weight > 0n)
         : [];
 
       const totalWeight = items.reduce((acc, it) => acc + it.weight, 0n);
@@ -285,25 +291,25 @@ export const useValidatorStore = defineStore('validatorStore', {
             const weights = epochData.cappedWeights || epochData.weights;
             const weight = weights[operatorAddress] || 0;
             if (weight === 0) return '0';
-            
+
             // Use simulated rewards calculation for the selected epoch
             const INITIAL_EPOCH_REWARD = 285000000000000; // ngonka
             const DECAY_RATE = -0.000475;
             const GENESIS_EPOCH = 1;
-            
+
             const epochPoolNumber = Math.max(0, Math.floor(INITIAL_EPOCH_REWARD * Math.exp(DECAY_RATE * (this.selectedEpochIndex - GENESIS_EPOCH))));
             const epochPool = BigInt(epochPoolNumber);
-            
+
             // Total weight must also be the sum of CAPPED weights
             const totalWeight = Object.values(weights).reduce((sum, w) => sum + (Number.isFinite(w) ? Number(w) : 0), 0);
             if (totalWeight === 0 || epochPool === 0n) return '0';
-            
+
             const reward = (epochPool * BigInt(Math.max(0, Math.floor(weight))) * 1_000_000n) / (BigInt(Math.floor(totalWeight)) * 1_000_000n);
             return reward.toString();
           }
           return '0';
         }
-        
+
         // For current epoch, use time-based calculation
         const stats = this.getValidatorStats(operatorAddress);
         const baseEarned = parseFloat(stats.earned_coins_current_epoch || '0');
@@ -448,10 +454,33 @@ export const useValidatorStore = defineStore('validatorStore', {
         this.loading = true;
         this.error = null;
         if (!this.blockchain.endpoint.address) throw new Error('No blockchain endpoint configured');
-        const response = await fetch(`${this.blockchain.endpoint.address}/productscience/inference/inference/participants_stats`);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        const data = await response.json();
-        this.participantsTotalsData = data.participants_stats || [];
+
+        const baseUrl = `${this.blockchain.endpoint.address}/productscience/inference/inference/participants_stats`;
+        let allStats: ParticipantTotals[] = [];
+        let nextKey: string | null = null;
+
+        do {
+          const queryParts: string[] = [];
+          if (nextKey) {
+            queryParts.push(`pagination.key=${encodeURIComponent(nextKey)}`);
+          }
+          // Fetch larger chunks to minimize requests
+          queryParts.push('pagination.limit=1000');
+
+          const query = queryParts.length ? `?${queryParts.join('&')}` : '';
+          const url = `${baseUrl}${query}`;
+
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+          const data = await response.json();
+
+          const stats = data.participants_stats || [];
+          allStats = allStats.concat(stats);
+
+          nextKey = data.pagination?.next_key || null;
+        } while (nextKey);
+
+        this.participantsTotalsData = allStats;
       } catch (err: any) {
         console.error('Error fetching participants stats:', err);
         this.error = err?.message || 'Failed to fetch participants stats';
@@ -483,9 +512,12 @@ export const useValidatorStore = defineStore('validatorStore', {
       try {
         this.loading = true;
         this.error = null;
-        if (!this.blockchain.rpc) throw new Error('RPC client not available');
-        const response = await this.blockchain.rpc.getStakingValidators('', 1000);
-        this.participantsStakingData = response.validators || [];
+
+        // Use StakingStore to fetch ALL validators (paginated)
+        // This avoids duplicate network requests and ensures consistent data
+        const validators = await this.staking.fetchAllValidators();
+
+        this.participantsStakingData = validators || [];
         const total = this.participantsStakingData.reduce((sum, v) => sum + Number(v.tokens || 0), 0);
         this.totalPower = total.toString();
       } catch (err: any) {
@@ -508,7 +540,10 @@ export const useValidatorStore = defineStore('validatorStore', {
         for (const p of list) {
           const accountAddress = String(p?.index || '');
           if (!accountAddress) continue;
-          const operatorAddress = this.accountToOperatorMap[accountAddress] || '';
+          let operatorAddress = this.accountToOperatorMap[accountAddress];
+          if (!operatorAddress) {
+            operatorAddress = accountToOperatorAddress(accountAddress);
+          }
           if (!operatorAddress) continue;
           const w = Number(p?.weight ?? 0);
           weights[operatorAddress] = Number.isFinite(w) && w > 0 ? w : 0;
@@ -539,17 +574,11 @@ export const useValidatorStore = defineStore('validatorStore', {
           this.previousParticipantsDataByOperator = {};
           return;
         }
-        const data = await this.blockchain.inferenceApiRequest(`/v1/epochs/${prevIdx}/participants`);
-        const list: any[] = data?.participants?.participants || data?.active_participants?.participants || [];
-        const participantsMapLocal: Record<string, Participant> = {};
-        for (const p of list) {
-          const accountAddress = String(p?.index || '');
-          if (!accountAddress) continue;
-          const operatorAddress = this.accountToOperatorMap[accountAddress] || '';
-          if (!operatorAddress) continue;
-          participantsMapLocal[operatorAddress] = p as Participant;
-        }
-        this.previousParticipantsDataByOperator = participantsMapLocal;
+
+        // Use fetchEpochParticipants to get rich data (including epoch_group_data) for the previous epoch
+        // This ensures the "Last Epoch" display uses the same detailed logic as the specific epoch selector
+        const epochData = await this.fetchEpochParticipants(prevIdx);
+        this.previousParticipantsDataByOperator = epochData.participants;
       } catch (err) {
         console.error('Error fetching previous epoch participants:', err);
         this.previousParticipantsDataByOperator = {};
@@ -557,76 +586,35 @@ export const useValidatorStore = defineStore('validatorStore', {
     },
 
     /**
-     * Fetch and cache all epoch performance summary data from chain API.
-     * Endpoint: /productscience/inference/inference/epoch_performance_summary
-     *
-     * We currently cannot query a single epoch directly, so we load everything
-     * (with a very large pagination.limit) and then filter locally per epoch.
+     * Fetch and cache epoch performance summary data for a specific epoch.
+     * Endpoint: /productscience/inference/inference/epoch_performance_summary/{epochIndex}
      */
-    async fetchAllEpochPerformanceSummary() {
+    async fetchEpochPerformanceSummary(epochIndex: number) {
       try {
         if (!this.blockchain.endpoint.address) throw new Error('No blockchain endpoint configured');
+        const url = `${this.blockchain.endpoint.address}/productscience/inference/inference/epoch_performance_summary/${epochIndex}`;
+        const response = await fetch(url).then(res => res.json());
+        const list = response?.epoch_performance_summary || [];
+        // Ensure array
+        const items = Array.isArray(list) ? list : [list];
 
-        const baseUrl = `${this.blockchain.endpoint.address}/productscience/inference/inference/epoch_performance_summary`;
-        const limit = 100000;
+        if (!this.epochPerformanceByEpoch[epochIndex]) {
+          this.epochPerformanceByEpoch[epochIndex] = {};
+        }
 
-        const epochPerformance: Record<number, Record<string, EpochPerformanceStats>> = {};
-
-        let nextKey: string | null = null;
-        let page = 0;
-
-        do {
-          page += 1;
-          const queryParts = [`pagination.limit=${limit}`];
-          if (nextKey) {
-            queryParts.push(`pagination.key=${encodeURIComponent(nextKey)}`);
-          }
-          const url = `${baseUrl}?${queryParts.join('&')}`;
-          // Use plain fetch instead of Cosmos client; response shape is simple
-          const resp = await fetch(url);
-          if (!resp.ok) {
-            throw new Error(`HTTP error when fetching epoch_performance_summary page ${page}: ${resp.status}`);
-          }
-          const data: EpochPerformanceSummaryResponse = await resp.json();
-
-          const items = data.epochPerformanceSummary || [];
-          for (const item of items) {
-            const epoch = Number(item.epoch_index || 0);
-            const participant = String(item.participant_id || '');
-            if (!epoch || !participant) continue;
-
-            const operatorAddress = this.accountToOperatorMap[participant];
-            if (!operatorAddress) continue; // skip non-validator participants
-
-            if (!epochPerformance[epoch]) {
-              epochPerformance[epoch] = {};
-            }
-            if (!epochPerformance[epoch][operatorAddress]) {
-              epochPerformance[epoch][operatorAddress] = {
-                inference_count: 0,
-                missed_requests: 0,
-              };
-            }
-
-            const stats = epochPerformance[epoch][operatorAddress];
-            const inf = Number(item.inference_count || '0');
-            const missed = Number(item.missed_requests || '0');
-            if (Number.isFinite(inf) && inf > 0) {
-              stats.inference_count += inf;
-            }
-            if (Number.isFinite(missed) && missed > 0) {
-              stats.missed_requests += missed;
-            }
-          }
-
-          nextKey = data.pagination?.next_key ?? null;
-        } while (nextKey);
-
-        this.epochPerformanceByEpoch = epochPerformance;
-        console.log('[ValidatorStore] Loaded epoch performance summary for epochs:', Object.keys(epochPerformance));
-      } catch (err) {
-        console.error('Error fetching epoch performance summary:', err);
-        // Keep existing cache on error; do not overwrite with empty object
+        for (const item of items) {
+          if (!item || !item.validator_address) continue;
+          const stats: EpochPerformanceStats = {
+            epoch_index: Number(item.epoch_index),
+            validator_address: item.validator_address,
+            inference_count: Number(item.inference_count || 0),
+            missed_requests: Number(item.missed_requests || 0),
+            active_score: Number(item.active_score || 0),
+          };
+          this.epochPerformanceByEpoch[epochIndex][item.validator_address] = stats;
+        }
+      } catch (err: any) {
+        console.warn(`Error fetching performance summary for epoch ${epochIndex}:`, err);
       }
     },
 
@@ -641,8 +629,17 @@ export const useValidatorStore = defineStore('validatorStore', {
         console.log('fetching epoch participants', epochIndex);
         // 1. Fetch Participants List (Existing logic)
         const data = await this.blockchain.inferenceApiRequest(`/v1/epochs/${epochIndex}/participants`);
-        const list: any[] = data?.participants?.participants || data?.active_participants?.participants || [];
-        
+        let list: any[] = data?.participants?.participants || data?.active_participants?.participants || [];
+        // Add excluded participants if any, they should have 0 weight
+        const excluded: any[] = data?.participants?.excluded_participants || data?.excluded_participants?.participants || [];
+        if (excluded.length > 0) {
+          // Mark them or just add them? User wants them in map but with 0 weight
+          // We can just concat them to list, and then in the loop ensuring we use their weight (which is likely 0 or we force it)
+          // But better to just concat and let the loop handle it, usually excluded have weight field too (maybe 0)
+          const excludedZeroed = excluded.map((p: any) => ({ ...p, weight: 0 }));
+          list = list.concat(excludedZeroed);
+        }
+
         console.log('fetching epoch data', epochIndex);
         // 2. Fetch Epoch Group Data (New logic for accurate weights)
         let groupData: EpochGroupData | null = null;
@@ -658,7 +655,8 @@ export const useValidatorStore = defineStore('validatorStore', {
           console.warn(`Failed to fetch epoch_group_data for epoch ${epochIndex}, falling back to basic weights`, e);
         }
 
-        const weights: Record<string, number> = {}; // Stores Effective Weight
+        const weights: Record<string, number> = {}; // Stores Effective Weight by Operator
+        const weightsByAccount: Record<string, number> = {}; // Stores Effective Weight by Account
         const initialWeights: Record<string, number> = {}; // Stores Initial/API Weight for comparison
         const cappedWeights: Record<string, number> = {};
         const modelsMap: Record<string, string[]> = {};
@@ -668,18 +666,22 @@ export const useValidatorStore = defineStore('validatorStore', {
         for (const p of list) {
           const accountAddress = String(p?.index || '');
           if (!accountAddress) continue;
-          const operatorAddress = this.accountToOperatorMap[accountAddress] || '';
+          let operatorAddress = this.accountToOperatorMap[accountAddress];
+          if (!operatorAddress) {
+            operatorAddress = accountToOperatorAddress(accountAddress);
+          }
           if (!operatorAddress) continue;
-          
+
           // Basic processing
           const ms = Array.isArray(p?.models) ? p.models.map((m: any) => String(m)) : [];
           modelsMap[operatorAddress] = ms;
           participantsMapLocal[operatorAddress] = p as Participant;
-          
+
           // Default to API provided weight if group data calculation fails
           let effectiveWeight = Number(p?.weight ?? 0);
           if (effectiveWeight < 0) effectiveWeight = 0;
           weights[operatorAddress] = effectiveWeight;
+          weightsByAccount[accountAddress] = effectiveWeight;
           initialWeights[operatorAddress] = effectiveWeight;
         }
 
@@ -688,41 +690,47 @@ export const useValidatorStore = defineStore('validatorStore', {
           console.debug(`Epoch ${epochIndex}: Fetched ${groupData.validation_weights.length} validation weights`);
           for (const vw of groupData.validation_weights) {
             const memberAddress = vw.member_address;
-            const operatorAddress = this.accountToOperatorMap[memberAddress];
-            
-            if (!operatorAddress || !participantsMapLocal[operatorAddress]) continue;
+            const operatorAddress = this.accountToOperatorMap[memberAddress] || accountToOperatorAddress(memberAddress);
 
             let preservedWeight = 0;
             if (vw.ml_nodes) {
               for (const node of vw.ml_nodes) {
                 // Check if timeslot_allocation[1] is true (POC_SLOT)
-                // The API returns boolean array, ensuring we access safely
                 if (node.timeslot_allocation && node.timeslot_allocation.length > 1 && node.timeslot_allocation[1]) {
                   preservedWeight += Number(node.poc_weight || 0);
                 }
               }
             }
-            
+
             const confirmationWeight = Number(vw.confirmation_weight || 0);
             const totalEffective = preservedWeight + confirmationWeight;
-            
-            // Update the weight with our calculated effective weight
-            weights[operatorAddress] = totalEffective;
-            // Store in participant object for reference
-            participantsMapLocal[operatorAddress].effective_weight = totalEffective;
+
+            if (operatorAddress && participantsMapLocal[operatorAddress]) {
+              // Update the weight with our calculated effective weight
+              weights[operatorAddress] = totalEffective;
+              // Store in participant object for reference
+              participantsMapLocal[operatorAddress].effective_weight = totalEffective;
+            }
+
+            // Always update by account address as it is the primary key in votes
+            weightsByAccount[memberAddress] = totalEffective;
           }
         } else {
           console.warn(`Epoch ${epochIndex}: No validation_weights found in group data`);
         }
 
+        // Calculate Total Power for the epoch (sum of all effective weights)
+        const totalEpochPower = Object.values(weightsByAccount).reduce((sum, w) => sum + w, 0);
+
         // 4. Apply Power Capping (30% Rule)
+        // ... Capping logic if needed for other uses, keeping existing code structure mostly ...
         // Create array for sorting: { op: string, weight: number }
         let participantsForCapping = Object.entries(weights)
           .map(([op, w]) => ({ op, weight: w }))
           .filter(p => p.weight > 0);
-          
+
         const numParticipants = participantsForCapping.length;
-        
+
         // Determine cap percentage
         let capPercentage = 0.30; // Standard 30%
         if (numParticipants === 1) capPercentage = 1.0;
@@ -730,22 +738,17 @@ export const useValidatorStore = defineStore('validatorStore', {
         else if (numParticipants === 3) capPercentage = 0.4;
 
         // Iterative capping algorithm
-        // We simulate the "finding a fixed point" by iteratively capping highest weights
-        // until no weight exceeds the cap of the NEW total.
-        // A simplified robust approach is to just run the reduction loop until stable.
-        
-        // Deep copy for calculation
         let currentWeights = participantsForCapping.map(p => ({ ...p }));
         let stable = false;
         let iterations = 0;
-        
+
         while (!stable && iterations < 20) {
           stable = true;
           const totalWeight = currentWeights.reduce((sum, p) => sum + p.weight, 0);
-          
+
           if (totalWeight > 0) {
             const capAmount = totalWeight * capPercentage;
-            
+
             for (let i = 0; i < currentWeights.length; i++) {
               if (currentWeights[i].weight > capAmount + 0.0001) { // epsilon for float comparison
                 currentWeights[i].weight = capAmount;
@@ -756,17 +759,11 @@ export const useValidatorStore = defineStore('validatorStore', {
           iterations++;
         }
 
-        console.log('participants capped weights', currentWeights);
         // Store result in cappedWeights
         for (const p of currentWeights) {
           cappedWeights[p.op] = p.weight;
           if (participantsMapLocal[p.op]) {
             participantsMapLocal[p.op].capped_weight = p.weight;
-            // Log debug info for weight calculations
-            const initial = initialWeights[p.op];
-            const effective = weights[p.op];
-            const capped = p.weight;
-            console.info(`Validator ${p.op}: Initial=${initial} -> Effective=${effective} -> Capped=${capped}`);
           }
         }
 
@@ -774,8 +771,10 @@ export const useValidatorStore = defineStore('validatorStore', {
         this.epochDataCache[epochIndex] = {
           participants: participantsMapLocal,
           weights,
+          weightsByAccount, // New: Direct map from account to weight
           cappedWeights,
           models: modelsMap,
+          totalPower: totalEpochPower // New: Total power for the epoch
         };
 
         return this.epochDataCache[epochIndex];
@@ -784,9 +783,23 @@ export const useValidatorStore = defineStore('validatorStore', {
         return {
           participants: {},
           weights: {},
+          weightsByAccount: {},
           cappedWeights: {},
           models: {},
+          totalPower: 0
         };
+      }
+    },
+
+    async fetchEpochInfoAtHeight(height: number) {
+      try {
+        if (!this.blockchain.endpoint.address) return null;
+        const url = `${this.blockchain.endpoint.address}/productscience/inference/inference/epoch_info`;
+        const res = await get(url, { 'x-cosmos-block-height': height.toString() });
+        return res;
+      } catch (err) {
+        console.warn(`Failed to fetch epoch info at height ${height}:`, err);
+        return null;
       }
     },
 
@@ -806,7 +819,7 @@ export const useValidatorStore = defineStore('validatorStore', {
         // Import epoch calculator
         const { calculateEpochStages } = await import('@/libs/epochCalculator');
         const nextEpochStages = calculateEpochStages(epochIndex + 1);
-        
+
         // Query transactions between selected epoch's claim_money and next epoch's poc_start
         const claimStart = nextEpochStages.claim_money;
         const claimEnd = nextEpochStages.next_poc_start;
@@ -822,57 +835,57 @@ export const useValidatorStore = defineStore('validatorStore', {
           `[ValidatorStore] Claimed-reward tx search height range for epoch ${epochIndex}: [` +
           `${this.lastClaimSearchRange.minHeight} .. ${this.lastClaimSearchRange.maxHeight}]`
         );
-        
+
         // Prepare data structures for incremental processing
         const claimedData: Record<string, { total: bigint; details: string[] }> = {};
         const accountToOperator = this.accountToOperatorMap;
-        
+
         let page = 1;
         const limit = 100;
         let totalCount = 0;
         let hasMore = true;
         let fetchedCount = 0;
-        
+
         while (hasMore) {
           const query = `?query=${encodeURIComponent(queryBase)}&limit=${limit}&page=${page}`;
           const response = await this.blockchain.rpc.getTxs(query, {}, undefined);
-          
+
           const txResponses = response.tx_responses || [];
-          
+
           if (page === 1) {
             const responseAny = response as any;
             totalCount = Number(responseAny.total || response.pagination?.total || '0');
           }
-          
+
           if (txResponses.length > 0) {
             fetchedCount += txResponses.length;
-            
+
             // Process THIS page's transactions immediately
             for (const txResponse of txResponses) {
               if (!txResponse?.events || !Array.isArray(txResponse.events)) continue;
-              
-              const vestRewardEvents = txResponse.events.filter((evt: any) => 
+
+              const vestRewardEvents = txResponse.events.filter((evt: any) =>
                 evt.type === 'vest_reward'
               );
-              
+
               for (const vestRewardEvent of vestRewardEvents) {
                 if (!vestRewardEvent.attributes || !Array.isArray(vestRewardEvent.attributes)) continue;
-                
+
                 let participantValue = '';
                 let amountValue = '';
-                
+
                 for (const attr of vestRewardEvent.attributes) {
                   const key = String(attr.key || '');
                   const value = String(attr.value || '');
                   if (key === 'participant') participantValue = value;
                   else if (key === 'amount') amountValue = value;
                 }
-                
+
                 if (!participantValue || !amountValue) continue;
-                
+
                 const operatorAddress = accountToOperator[participantValue] || '';
                 if (!operatorAddress || !operatorAddresses.includes(operatorAddress)) continue;
-                
+
                 if (!claimedData[operatorAddress]) {
                   claimedData[operatorAddress] = { total: BigInt(0), details: [] };
                 }
@@ -1078,6 +1091,9 @@ export const useValidatorStore = defineStore('validatorStore', {
       }
       (this as any)._initPromise = (async () => {
         try {
+          // Ensure blockchain is fully initialized (and staking store reset) before fetching
+          await this.blockchain.initial();
+
           await Promise.all([
             this.fetchParticipantsStakingData(),
             this.fetchParticipantsTotalsData(),
@@ -1087,9 +1103,6 @@ export const useValidatorStore = defineStore('validatorStore', {
           await this.blockchain.fetchLatestEpochInfo();
           await this.fetchPreviousEpochParticipants();
           await this.loadAllAvatars();
-          // Load full epoch performance summary once and cache it locally.
-          // This is a heavy call but required until a per-epoch query is available.
-          await this.fetchAllEpochPerformanceSummary();
         } finally {
           this.initialized = true;
           (this as any)._initPromise = null;

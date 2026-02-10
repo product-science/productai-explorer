@@ -135,8 +135,8 @@
     "no_escrowed_assets": "No Escrowed Assets",
     "contract_states": "Contract States",
     "query_contract": "Query Contract",
-    "suggested_messages":"Suggested Messages",
-    "result":"Result",
+    "suggested_messages": "Suggested Messages",
+    "result": "Result",
     "tips_description_1": "This feature is available when deploying contracts via WELLDONE Code. For more information, please check the document at the link below."
   },
   "gov": {
@@ -196,7 +196,7 @@
     "btn_out": "Out",
     "btn_in": "In"
   },
-    "validator": {
+  "validator": {
     "inflation": "Inflation",
     "unbonding_time": "Unbonding Time",
     "double_sign_slashing": "Double Sign Slashing",
@@ -238,20 +238,20 @@
     "signer_addr": "Signer Address",
     "consensus_pub_key": "Consensus Public Key",
     "liquid_staking": "Liquid Staking",
-    "liquid_staking_shares":"Liquid Shares",
-    "validator_bond_share":"Validator Bonded",
+    "liquid_staking_shares": "Liquid Shares",
+    "validator_bond_share": "Validator Bonded",
     "total_power": "Total Compute Power",
     "final_reward": "Previous Epoch Reward",
     "earned_reward": "Current Epoch Reward",
     "validators": "Validators",
-      "validators_hosts": "Host/Validator",
-      "earned": "Earned",
-      "claimed": "Claimed",
-      "inference_count": "Inferences",
-      "missed_requests": "Missed req.",
-      "reputation": "Reputation",
-      "missed_blocks": "Missed Blocks",
-      "uptime": "Uptime",
+    "validators_hosts": "Host/Validator",
+    "earned": "Earned",
+    "claimed": "Claimed",
+    "inference_count": "Inferences",
+    "missed_requests": "Missed req.",
+    "reputation": "Reputation",
+    "missed_blocks": "Missed Blocks",
+    "uptime": "Uptime",
     "meta_description": "Validator selection happens through Sprints — short cycles where Hosts (also Validators) prove computational power by generating nonces. Network decisions are made based on PoC‑weighted votes.",
     "hints": {
       "next_poc": "Time left until the next Proof of Compute",
@@ -297,7 +297,15 @@
     "memo": "Memo",
     "status": "Status",
     "no_messages": "No messages",
-    "meta_description": "Only show transactions in the recent blocks (AI inferences, coin transfers, and other operations)."
+    "meta_description": "Only show transactions in the recent blocks (AI inferences, coin transfers, and other operations).",
+    "msg_type": "Msg Type",
+    "creator": "Creator",
+    "total_stat": "Total (Count / Gas)",
+    "failed_stat": "Failed (Count / Gas)",
+    "failed": "Failed",
+    "error": "Error",
+    "show_more": "Show More",
+    "no_filter_match": "No transactions match the selected filter."
   },
   "uptime": {
     "overall": "Overall",

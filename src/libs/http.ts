@@ -12,9 +12,15 @@ export async function fetchData<T>(
   return adapter(data);
 }
 
-export async function get(url: string) {
-  const response = await fetch(url, {referrerPolicy: 'origin-when-cross-origin'});
-  
+export async function get(url: string, headers: Record<string, string> = {}) {
+  const response = await fetch(url, {
+    referrerPolicy: 'origin-when-cross-origin',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers
+    }
+  });
+
   // Check if response is successful
   if (!response.ok) {
     let errorMessage = `HTTP error: ${response.status} ${response.statusText}`;
@@ -29,7 +35,7 @@ export async function get(url: string) {
     }
     throw new Error(errorMessage);
   }
-  
+
   // Check if response has content
   const contentType = response.headers.get('content-type');
   if (!contentType || !contentType.includes('application/json')) {
@@ -45,13 +51,13 @@ export async function get(url: string) {
       throw new Error(`Invalid JSON response: ${text}`);
     }
   }
-  
+
   // Parse JSON response
   return response.json();
 }
 
 export async function getB(url: string) {
-  return (await fetch(url, {referrerPolicy: 'origin-when-cross-origin'})).arrayBuffer();
+  return (await fetch(url, { referrerPolicy: 'origin-when-cross-origin' })).arrayBuffer();
 }
 
 export async function post(url: string, data: any) {
@@ -67,7 +73,7 @@ export async function post(url: string, data: any) {
     },
     body: JSON.stringify(data), // body data type must match "Content-Type" header
   });
-  
+
   // Check if response is successful
   if (!response.ok) {
     let errorMessage = `HTTP error: ${response.status} ${response.statusText}`;
@@ -82,7 +88,7 @@ export async function post(url: string, data: any) {
     }
     throw new Error(errorMessage);
   }
-  
+
   // Check if response has content
   const contentType = response.headers.get('content-type');
   if (!contentType || !contentType.includes('application/json')) {
@@ -98,7 +104,7 @@ export async function post(url: string, data: any) {
       throw new Error(`Invalid JSON response: ${text}`);
     }
   }
-  
+
   // Parse JSON response
   return response.json();
 }

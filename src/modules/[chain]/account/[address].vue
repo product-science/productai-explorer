@@ -53,13 +53,22 @@ onMounted(() => {
   setTimeout(refreshSeriesColors, 0)
 });
 
+const nativeBalances = computed(() => {
+  return balances.value?.filter(b => !b.denom.startsWith('ibc/')) || [];
+});
+
+const ibcBalances = computed(() => {
+  return balances.value?.filter(b => b.denom.startsWith('ibc/')) || [];
+});
+
 const totalAmountByCategory = computed(() => {
   let sumVest = 0;
   vestingTotal.value?.forEach((x) => {
     sumVest += format.tokenDisplayNumber(x as any, 'local');
   });
   let sumBal = 0;
-  balances.value?.forEach((x) => {
+  // ONLY sum native balances for the chart/total
+  nativeBalances.value?.forEach((x) => {
     sumBal += format.tokenDisplayNumber(x as any, 'local');
   });
   return [sumBal, sumVest];
@@ -345,6 +354,56 @@ async function loadAllVestingRewards(address: string) {
   }
 }
 
+const expandedGroups = ref<Record<string, boolean>>({});
+const resolvedChainIds = ref<Record<string, { chainId: string, status: boolean }>>({});
+
+const groupedIBCBalances = computed(() => {
+  const groups: Record<string, { total: number, items: any[] }> = {};
+  
+  ibcBalances.value.forEach(b => {
+    const displayDenom = format.tokenDisplayDenom(b.denom) || 'Unknown';
+    if (!groups[displayDenom]) {
+      groups[displayDenom] = { total: 0, items: [] };
+    }
+    const amount = format.tokenDisplayNumber(b, 'local');
+    groups[displayDenom].total += amount;
+    groups[displayDenom].items.push(b);
+  });
+
+  return Object.entries(groups).map(([denom, data]) => ({
+    denom,
+    total: data.total,
+    items: data.items
+  })).sort((a, b) => b.total - a.total);
+});
+
+async function toggleGroup(denom: string) {
+  expandedGroups.value[denom] = !expandedGroups.value[denom];
+  
+  // If expanding, inspect items to see if we can resolve chain IDs
+  if (expandedGroups.value[denom]) {
+       const group = groupedIBCBalances.value.find(g => g.denom === denom);
+       if(group) {
+           for (const item of group.items) {
+               if(resolvedChainIds.value[item.denom]) continue; // already resolved
+               
+               // Trigger resolution
+               const hash = item.denom.replace('ibc/', '');
+               const trace = await format.fetchDenomTrace(hash); // Ensure trace is loaded
+               if(trace) {
+                   const result = await format.resolveIBCChainId(item.denom, trace);
+                   if (result && result.chainId) {
+                       resolvedChainIds.value[item.denom] = {
+                           chainId: result.chainId,
+                           status: result.state === 'STATE_OPEN'
+                       };
+                   }
+               }
+           }
+       }
+  }
+}
+
 function onVestingRewardsPageChange(page: number) {
   loadVestingRewards(props.address, page);
 }
@@ -417,84 +476,152 @@ function onVestingRewardsPageChange(page: number) {
           />
         </div>
         <div class="mt-4 md:!col-span-2 md:!mt-0 md:!ml-4">          
-          <!-- list-->
-          <div class="">
-            <!--balances  -->
-            <div
-              class="flex items-center px-4 mb-2"
-              v-for="(balanceItem, index) in balances"
-              :key="index"
-            >
-              <div class="inline-flex items-center" @mouseenter="hoveredSlice = 0" @mouseleave="hoveredSlice = null">
-                <div
-                  class="w-9 h-9 rounded overflow-hidden flex items-center justify-center relative mr-4"
-                >
-                  <Icon icon="mdi-account-cash" class="text-info" size="20" />
-                  <div
-                    class="absolute top-0 bottom-0 left-0 right-0 bg-info opacity-20"
-                  ></div>
-                </div>
-                <div>
-                  <div class="text-sm font-semibold">
-                    {{ format.formatToken(balanceItem) }}
-                  </div>
-                  <div class="text-xs">
-                    {{ format.calculatePercent(format.tokenDisplayNumber(balanceItem, 'local'), totalAmount) }}
-                  </div>
-                </div>
-              </div>
-              <div
-                class="text-xs truncate relative py-1 px-3 rounded-full w-fit text-primary dark:invert mr-2"
-                v-if="showValuations"
-              >
-                <span
-                  class="inset-x-0 inset-y-0 opacity-10 absolute bg-primary dark:invert text-sm"
-                ></span>
-                ${{ format.tokenValue(balanceItem) }}                
-              </div>
-            </div>
-            <!-- vesting.total -->
-            <div
-              class="flex items-center px-4 mb-2"
-              v-for="(vestingItem, index) in vestingTotal"
-              :key="index"
-            >
-              <div class="inline-flex items-center" @mouseenter="hoveredSlice = 1" @mouseleave="hoveredSlice = null">
-                <div
-                  class="w-9 h-9 rounded overflow-hidden flex items-center justify-center relative mr-4"
-                >
-                  <Icon
-                    icon="mdi-timer-sand"
-                    class="text-success"
-                    size="20"
-                  />
-                  <div
-                    class="absolute top-0 bottom-0 left-0 right-0 bg-success opacity-20"
-                  ></div>
-                </div>
-                <div>
-                  <div class="text-sm font-semibold">
-                    {{ format.formatToken(vestingItem) }}
-                  </div>
-                  <div class="text-xs">{{ format.calculatePercent(format.tokenDisplayNumber(vestingItem, 'local'), totalAmount) }}</div>
-                </div>
-              </div>
-              <div
-                class="text-xs truncate relative py-1 px-3 rounded-full w-fit text-primary dark:invert mr-2"
-                v-if="showValuations"
-              >
-                <span
-                  class="inset-x-0 inset-y-0 opacity-10 absolute bg-primary  dark:invert text-sm"
-                ></span>${{ format.tokenValue(vestingItem) }}
-                
-              </div>
+          <!-- Native Balances (Table) -->
+          <div class="mb-4">
+            <h3 class="text-sm font-bold mb-2 opacity-75">Native Assets</h3>
+            <div class="overflow-x-auto">
+              <table class="table w-full text-sm">
+                <thead>
+                  <tr>
+                    <th class="py-2 pl-4">Type</th>
+                    <th class="py-2 text-right">Amount</th>
+                    <th class="py-2 text-right">Percent</th>                    
+                    <th class="py-2 text-right pr-4" v-if="showValuations">Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr 
+                    v-for="(balanceItem, index) in nativeBalances" 
+                    :key="'native-'+index" 
+                    @mouseenter="hoveredSlice = 0" 
+                    @mouseleave="hoveredSlice = null"
+                    class="hover"
+                  >
+                    <td class="py-2 pl-4">
+                      <div class="flex items-center">
+                        <div class="w-7 h-7 rounded overflow-hidden flex items-center justify-center relative mr-3">
+                          <Icon icon="mdi-account-cash" class="text-info" size="18" />
+                          <div class="absolute inset-0 bg-info opacity-20"></div>
+                        </div>
+                        <span class="font-semibold">Balance</span>
+                      </div>
+                    </td>
+                    <td class="py-2 text-right">
+                      {{ format.formatNumber(format.tokenDisplayNumber(balanceItem, 'local')) }}
+                    </td>
+                    <td class="py-2 text-right text-xs opacity-75">
+                      {{ format.calculatePercent(format.tokenDisplayNumber(balanceItem, 'local'), totalAmount) }}
+                    </td>
+                     <td class="py-2 text-right pr-4" v-if="showValuations">
+                      ${{ format.tokenValue(balanceItem) }}
+                    </td>
+                  </tr>
+                  <!-- Vesting (as part of native logic usually) -->
+                  <tr 
+                    v-for="(vestingItem, index) in vestingTotal" 
+                    :key="'vest-'+index"
+                    @mouseenter="hoveredSlice = 1" 
+                    @mouseleave="hoveredSlice = null"
+                    class="hover"
+                  >
+                    <td class="py-2 pl-4">
+                      <div class="flex items-center">
+                         <div class="w-7 h-7 rounded overflow-hidden flex items-center justify-center relative mr-3">
+                          <Icon icon="mdi-timer-sand" class="text-success" size="18" />
+                          <div class="absolute inset-0 bg-success opacity-20"></div>
+                        </div>
+                        <span class="font-semibold">Vesting</span>
+                      </div>
+                    </td>
+                     <td class="py-2 text-right">
+                      {{ format.formatNumber(format.tokenDisplayNumber(vestingItem, 'local')) }}
+                    </td>
+                    <td class="py-2 text-right text-xs opacity-75">
+                      {{ format.calculatePercent(format.tokenDisplayNumber(vestingItem, 'local'), totalAmount) }}
+                    </td>
+                    <td class="py-2 text-right pr-4" v-if="showValuations">
+                      ${{ format.tokenValue(vestingItem) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
-          <!-- Total value hidden for now - can be enabled later when valuation is available
-          <div class="mt-4 text-lg font-semibold mr-5 pl-5 border-t pt-4 text-right" v-if="showValuations">
-            {{ $t('account.total_value') }}: ${{ totalValue }}
+
+          <!-- IBC Balances (Grouped Table) -->
+          <div v-if="groupedIBCBalances.length > 0">
+             <h3 class="text-sm font-bold mb-2 opacity-75">IBC Assets</h3>
+             <div class="overflow-x-auto">
+              <table class="table w-full text-sm">
+                <thead>
+                  <tr>
+                    <th class="py-2 pl-4">Type</th>
+                    <th class="py-2 text-right">Amount</th>
+                    <th class="py-2 text-right pr-4" v-if="showValuations">Value</th>
+                    <th class="py-2 w-8"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template v-for="(group, gIndex) in groupedIBCBalances" :key="'group-'+gIndex">
+                      <!-- Group Header Row -->
+                      <tr class="hover cursor-pointer" @click="toggleGroup(group.denom)">
+                        <td class="py-2 pl-4">
+                          <div class="flex items-center">
+                            <div class="w-7 h-7 rounded overflow-hidden flex items-center justify-center relative mr-3">
+                              <Icon icon="mdi-cube-send" class="text-warning" size="18" />
+                              <div class="absolute inset-0 bg-warning opacity-20"></div>
+                            </div>
+                            <span class="font-semibold">{{ group.denom }}</span>
+                            <span class="ml-2 text-xs opacity-50 bg-base-300 px-1 rounded">{{ group.items.length }} src</span>
+                          </div>
+                        </td>
+                        <td class="py-2 text-right font-medium">
+                          {{ format.formatNumber(group.total) }}
+                         </td>
+                        <td class="py-2 text-right pr-4" v-if="showValuations">
+                           <!-- Rough sum estimation if needed, omitted for brevity as value is per token -->
+                           -
+                        </td>
+                        <td class="py-2 text-center">
+                            <Icon :icon="expandedGroups[group.denom] ? 'mdi-chevron-up' : 'mdi-chevron-down'" />
+                        </td>
+                      </tr>
+                      
+                      <!-- Expanded Details Rows -->
+                       <template v-if="expandedGroups[group.denom]">
+                           <tr v-for="(item, iIndex) in group.items" :key="'item-'+iIndex" class="bg-base-200/30 text-xs">
+                               <td class="py-2 pl-12" colspan="1">
+                                   <div class="flex flex-col">
+                                       <div class="flex items-center gap-2">
+                                           <span class="font-mono opacity-75">{{ resolvedChainIds[item.denom]?.chainId || 'Resolving...' }}</span>
+                                           
+                                           <template v-if="resolvedChainIds[item.denom]">
+                                               <Icon 
+                                                   :icon="resolvedChainIds[item.denom].status ? 'mdi-check-circle' : 'mdi-close-circle'" 
+                                                   :class="resolvedChainIds[item.denom].status ? 'text-success' : 'text-error'"
+                                                   size="16"
+                                               />
+                                           </template>
+                                           <span v-else class="loading loading-spinner loading-xs scale-50"></span>
+                                        </div>
+                                       <span class="opacity-50 text-[10px] break-all">{{ item.denom }}</span>
+                                   </div>
+                               </td>
+                               <td class="py-2 text-right">
+                                   {{ format.formatNumber(format.tokenDisplayNumber(item, 'local')) }}
+                               </td>
+                               <td class="py-2 text-right pr-4" v-if="showValuations">
+                                   ${{ format.tokenValue(item) }}
+                               </td>
+                               <td></td>
+                           </tr>
+                       </template>
+                  </template>
+                </tbody>
+              </table>
+             </div>
           </div>
-          -->
+
         </div>
       </div>
     </div>

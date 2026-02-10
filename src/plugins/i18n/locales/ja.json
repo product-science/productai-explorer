@@ -296,7 +296,15 @@
     "memo": "メモ",
     "status": "ステータス",
     "no_messages": "メッセージはありません",
-    "meta_description": "最近のブロック内のトランザクションのみを表示します（AI推論、コイン送金、その他の操作）。"
+    "meta_description": "最近のブロック内のトランザクションのみを表示します（AI推論、コイン送金、その他の操作）。",
+    "msg_type": "Msg Type",
+    "creator": "Creator",
+    "total_stat": "Total (Count / Gas)",
+    "failed_stat": "Failed (Count / Gas)",
+    "failed": "Failed",
+    "error": "Error",
+    "show_more": "Show More",
+    "no_filter_match": "No transactions match the selected filter."
   },
   "uptime": {
     "overall": "全体",

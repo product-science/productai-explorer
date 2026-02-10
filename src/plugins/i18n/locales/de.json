@@ -296,7 +296,15 @@
     "memo": "Memo",
     "status": "Status",
     "no_messages": "Keine Nachrichten",
-    "meta_description": "Es werden nur Transaktionen in den jüngsten Blöcken angezeigt (AI‑Inferenzen, Coin‑Transfers und weitere Operationen)."
+    "meta_description": "Es werden nur Transaktionen in den jüngsten Blöcken angezeigt (AI‑Inferenzen, Coin‑Transfers und weitere Operationen).",
+    "msg_type": "Msg Type",
+    "creator": "Creator",
+    "total_stat": "Total (Count / Gas)",
+    "failed_stat": "Failed (Count / Gas)",
+    "failed": "Failed",
+    "error": "Error",
+    "show_more": "Show More",
+    "no_filter_match": "No transactions match the selected filter."
   },
   "uptime": {
     "overall": "Gesamt",

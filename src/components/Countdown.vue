@@ -19,7 +19,7 @@ const s = ref(0)
     v-slot="{ days, hours, minutes, seconds }"
     class="countdown-container justify-items-center items-center"
   >
-    <template v-if="!hideDays">
+    <template v-if="!hideDays && days > 0">
       <span class="text-primary font-bold" :class="css">{{ days }}</span>
       <span class="opacity-70 ml-1 mr-2">{{ short ? 'd' : 'days' }}</span>
     </template>

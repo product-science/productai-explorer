@@ -17,6 +17,8 @@ export const useBaseStore = defineStore('baseStore', {
                 | 'light'
                 | 'dark',
             connected: true,
+            blockCache: {} as Record<string, { data: Block, txResponses?: any[], timestamp: number }>,
+            txFilterState: { msgTypes: [], creators: [] } as { msgTypes: string[], creators: string[] },
         };
     },
     getters: {
@@ -63,7 +65,7 @@ export const useBaseStore = defineStore('baseStore', {
                     }
                 })
             );
-            return txs.sort((a, b) => {return Number(b.height) - Number(a.height)});
+            return txs.sort((a, b) => { return Number(b.height) - Number(a.height) });
         },
     },
     actions: {
@@ -74,16 +76,16 @@ export const useBaseStore = defineStore('baseStore', {
             this.recents = [];
         },
         async fetchLatest() {
-            try{
+            try {
                 this.latest = await this.blockchain.rpc?.getBaseBlockLatest();
                 this.connected = true
-            }catch(e) {
+            } catch (e) {
                 this.connected = false
             }
             if (
                 !this.earlest ||
                 this.earlest?.block?.header?.chain_id !=
-                    this.latest?.block?.header?.chain_id
+                this.latest?.block?.header?.chain_id
             ) {
                 //reset earlest and recents
                 this.earlest = this.latest;
@@ -113,7 +115,43 @@ export const useBaseStore = defineStore('baseStore', {
             return this.blockchain.rpc.getBaseValidatorsetLatest(offset);
         },
         async fetchBlock(height?: number | string) {
-            return this.blockchain.rpc.getBaseBlockAt(String(height));
+            const h = String(height);
+            // Check cache (24 hours expiration)
+            const cached = this.blockCache[h];
+            if (cached && (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000)) {
+                return cached.data;
+            }
+
+            const data = await this.blockchain.rpc.getBaseBlockAt(h);
+            if (data && data.block) {
+                this.blockCache[h] = { data, timestamp: Date.now() };
+            }
+            return data;
+        },
+        getCachedTxResponses(height: string | number) {
+            const h = String(height);
+            const cached = this.blockCache[h];
+            if (cached && (Date.now() - cached.timestamp < 24 * 60 * 60 * 1000)) {
+                return cached.txResponses;
+            }
+            return undefined;
+        },
+        cacheTxResponses(height: string | number, responses: any[]) {
+            const h = String(height);
+            if (this.blockCache[h]) {
+                this.blockCache[h].txResponses = responses;
+            }
+        },
+        toggleTxFilter(type: 'msgTypes' | 'creators', value: string) {
+            const list = this.txFilterState[type];
+            if (list.includes(value)) {
+                this.txFilterState[type] = list.filter(x => x !== value);
+            } else {
+                this.txFilterState[type].push(value);
+            }
+        },
+        clearTxFilter() {
+            this.txFilterState = { msgTypes: [], creators: [] };
         },
         async fetchAbciInfo() {
             return this.blockchain.rpc.getBaseNodeInfo();

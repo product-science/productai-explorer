@@ -5,10 +5,14 @@ const props = defineProps({
   total: { type: String },
   limit: { type: Number },
   callback: { type: Function, required: true },
-  // Optional externally controlled current page (1-based)
+  // Optional externally controlled current page (1-based or custom index)
   page: { type: Number, default: 1 },
+  // Optional minimum allowed page/index (defaults to 1)
+  minPage: { type: Number, default: 1 },
   // Optional loading state; when true, active page shows inline spinner
   loading: { type: Boolean, default: false },
+  // Max visible pagination buttons (odd number recommended, usually 5 or 3)
+  maxVisible: { type: Number, default: 5 },
 });
 
 const current = ref(props.page || 1);
@@ -22,53 +26,72 @@ watch(
   }
 );
 
+// Highest page/index value we can navigate to (derived from total/limit)
 const pageCount = computed(() => {
   const total = Number(props.total || 0);
   if (!props.limit || props.limit <= 0) return 0;
   return total > 0 ? Math.ceil(total / props.limit) : 0;
 });
 
-const pagesToLeft = computed(() => Math.max(0, current.value - 1));
+const minPage = computed(() =>
+  typeof props.minPage === 'number' && props.minPage > 0 ? props.minPage : 1
+);
+
+// Dynamic threshold based on maxVisible (e.g., 2 for 5, 1 for 3)
+const buffer = computed(() => Math.floor((props.maxVisible - 1) / 2));
+
+const pagesToLeft = computed(() => Math.max(0, current.value - minPage.value));
 const pagesToRight = computed(() => Math.max(0, pageCount.value - current.value));
 
-const showLeftEllipsis = computed(() => pagesToLeft.value > 3);
-const showRightEllipsis = computed(() => pagesToRight.value > 3);
+const showLeftEllipsis = computed(() => pagesToLeft.value > buffer.value + 1);
+const showRightEllipsis = computed(() => pagesToRight.value > buffer.value + 1);
 
 const pageNumbers = computed(() => {
-  const totalPages = pageCount.value;
+  const maxPage = pageCount.value;
+  const min = minPage.value;
   const result: number[] = [];
-  if (totalPages === 0) return result;
+  if (maxPage === 0) return result;
 
-  if (totalPages <= 5) {
-    for (let i = 1; i <= totalPages; i++) result.push(i);
+  const totalVisible = maxPage - min + 1;
+
+  // If total page range is small, show everything
+  if (totalVisible <= props.maxVisible) {
+    for (let i = min; i <= maxPage; i++) result.push(i);
     return result;
   }
 
-  if (current.value <= 3) {
-    for (let i = 1; i <= 5; i++) result.push(i);
+  // Use dynamic buffer
+  const buf = buffer.value; 
+
+  // Near the beginning of the range
+  if (current.value <= min + buf) {
+    for (let i = min; i <= min + (props.maxVisible - 1); i++) result.push(i);
     return result;
   }
 
-  if (current.value >= totalPages - 2) {
-    for (let i = totalPages - 4; i <= totalPages; i++) result.push(i);
+  // Near the end of the range
+  if (current.value >= maxPage - buf) {
+    for (let i = maxPage - (props.maxVisible - 1); i <= maxPage; i++) result.push(i);
     return result;
   }
 
-  for (let i = current.value - 2; i <= current.value + 2; i++) result.push(i);
+  // Middle of the range
+  for (let i = current.value - buf; i <= current.value + buf; i++) result.push(i);
   return result;
 });
 
 function goto(pageNum: number) {
-  const totalPages = pageCount.value;
-  if (totalPages === 0) return;
-  const target = Math.min(Math.max(1, pageNum), totalPages);
+  const maxPage = pageCount.value;
+  if (maxPage === 0) return;
+  const min = minPage.value;
+  const target = Math.min(Math.max(min, pageNum), maxPage);
   if (target === current.value) return;
   current.value = target;
   props.callback(target);
 }
 
 function gotoFirst() {
-  goto(1);
+  goto(minPage.value);
 }
 
 function gotoLast() {

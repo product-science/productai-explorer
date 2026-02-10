@@ -117,7 +117,6 @@ function applyHover(idx: number | null) {
   // avoid redundant work & guard against recursion
   if (lastAppliedIndex.value === idx) return
   lastAppliedIndex.value = idx
-  console.log('applyHover', idx)
 
   const paths = getSlicePaths()
   if (!paths.length) return
@@ -143,7 +142,6 @@ function applyHover(idx: number | null) {
 }
 
 watch(() => props.hoverIndex, (idx) => {
-  console.log('hoverIndex', idx)
   requestAnimationFrame(() => {
     applyHover(idx ?? null)
     updateCenterLabel(idx ?? null)

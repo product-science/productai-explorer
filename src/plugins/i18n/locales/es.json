@@ -295,7 +295,15 @@
     "memo": "Memo",
     "status": "Estado",
     "no_messages": "Sin mensajes",
-    "meta_description": "Muestra solo las transacciones en los bloques recientes (inferencias de IA, transferencias de monedas y otras operaciones)."
+    "meta_description": "Muestra solo las transacciones en los bloques recientes (inferencias de IA, transferencias de monedas y otras operaciones).",
+    "msg_type": "Msg Type",
+    "creator": "Creator",
+    "total_stat": "Total (Count / Gas)",
+    "failed_stat": "Failed (Count / Gas)",
+    "failed": "Failed",
+    "error": "Error",
+    "show_more": "Show More",
+    "no_filter_match": "No transactions match the selected filter."
   },
   "uptime": {
     "overall": "General",

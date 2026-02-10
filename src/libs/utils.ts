@@ -76,8 +76,8 @@ export function formatTokenAmount(
   let exp = asset
     ? asset.exponent
     : String(denom).startsWith('gravity')
-    ? 18
-    : 6;
+      ? 18
+      : 6;
   const config = Object.values(getLocalChains());
 
   amount = Number(Number(tokenAmount)) / 10 ** exp;
@@ -120,21 +120,21 @@ export function isHexAddress(v: any) {
 }
 
 export function isBech32Address(v?: string) {
-  if(!v) return ""
+  if (!v) return ""
   const pattern = /^[a-z\d]+1[a-z\d]{38}$/g
   return String(v).search(pattern) > -1
 }
 
 export function formatSeconds(value?: string) {
-  if(!value) return ''
+  if (!value) return ''
   const duration = Number(value.replace(/s/, ''))
-  if(duration > 24*60*60) {
-    return `${(duration / ( 24 * 60 * 60)).toFixed()} days`
+  if (duration > 24 * 60 * 60) {
+    return `${(duration / (24 * 60 * 60)).toFixed()} days`
   }
-  if(duration > 60*60) {
+  if (duration > 60 * 60) {
     return `${(duration / (60 * 60)).toFixed()} hours`
-  }    
-  if(duration > 60) {
+  }
+  if (duration > 60) {
     return `${duration / 60} mins`
   }
   return value
@@ -204,3 +204,12 @@ export function rgbToHsl(color: string) {
     l,
   };
 }
+
+
+export function formatProposalType(type?: string) {
+  if (!type) return 'Proposal';
+  const parts = type.split('.');
+  const name = parts[parts.length - 1].replace('Msg', '').replace('Proposal', '');
+  return name.replace(/([A-Z])/g, ' $1').trim();
+}
+

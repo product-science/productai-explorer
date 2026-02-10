@@ -14,6 +14,7 @@ import { useBankStore } from './useBankStore';
 import type { Coin, DenomTrace } from '@/types';
 import { useDashboard } from './useDashboard';
 import type { Asset } from '@ping-pub/chain-registry-client/dist/types'
+import { MsgExec } from 'cosmjs-types/cosmos/authz/v1beta1/tx';
 
 dayjs.extend(localeData);
 dayjs.extend(duration);
@@ -72,10 +73,58 @@ export const useFormatter = defineStore('formatter', {
       return trace;
     },
     async fetchDenomMetadata(denom: string) {
-      if(this.loading.includes(denom)) return 
+      if (this.loading.includes(denom)) return
       this.loading.push(denom)
-      const asset = await get(`https://metadata.ping.pub/metadata/${denom}`) as Asset
-      this.ibcMetadata[denom] = asset
+      try {
+        const hash = denom.startsWith("ibc/") ? denom.replace(/^ibc\//, "") : denom;
+        const url = `${this.blockchain.endpoint.address}/cosmos/bank/v1beta1/denoms_metadata/ibc/${hash}`;
+        const data = await get(url) as { metadata: Asset };
+        if (data && data.metadata) {
+          this.ibcMetadata[hash] = data.metadata;
+        }
+      } catch (e) {
+        console.error(`Failed to fetch metadata for ${denom}`, e)
+      } finally {
+        this.loading = this.loading.filter(x => x !== denom)
+      }
+    },
+    async resolveIBCChainId(denom: string, trace: DenomTrace) {
+      if (!trace || !trace.path) return;
+      const parts = trace.path.split('/');
+      // Standard path: transfer/channel-X
+      if (parts.length >= 2 && parts[0] === 'transfer' && parts[1].startsWith('channel-')) {
+        const port = parts[0];
+        const channelId = parts[1];
+        const cacheKey = `${channelId}`;
+
+
+        // Check if already resolved/cached (in a real app, use a proper cache)
+        if ((this as any)._ibcChainIdCache?.[cacheKey]) return (this as any)._ibcChainIdCache[cacheKey];
+
+        try {
+          // 1. Get Channel
+          const channelRes = await this.blockchain.rpc.getIBCChannel(channelId, port);
+          const connectionId = channelRes?.channel?.connection_hops?.[0];
+          if (!connectionId) return;
+
+          // 2. Get Connection for State
+          const connRes = await this.blockchain.rpc.getIBCConnectionsById(connectionId);
+          const state = connRes?.connection?.state; // e.g. "STATE_OPEN"
+
+          // 3. Get Client State for Chain ID
+          const clientStateRes = await this.blockchain.rpc.getIBCConnectionsClientState(connectionId);
+          const chainId = clientStateRes?.identified_client_state?.client_state?.chain_id;
+
+          if (chainId) {
+            const result = { chainId, state };
+            if (!(this as any)._ibcChainIdCache) (this as any)._ibcChainIdCache = {};
+            (this as any)._ibcChainIdCache[cacheKey] = result;
+            return result;
+          }
+        } catch (e) {
+          console.error('Failed to resolve IBC chain ID', e);
+        }
+      }
     },
     priceInfo(denom: string) {
       const id = this.dashboard.coingecko[denom]?.coinId || "";
@@ -83,7 +132,7 @@ export const useFormatter = defineStore('formatter', {
       return prices;
     },
     color(change?: number) {
-      if(!change) return ""
+      if (!change) return ""
       switch (true) {
         case change > 0:
           return "text-success"
@@ -98,7 +147,7 @@ export const useFormatter = defineStore('formatter', {
       return this.color(change)
     },
     price(denom: string, currency = "usd") {
-      if(!denom || denom.length < 2) return 0
+      if (!denom || denom.length < 2) return 0
       const info = this.priceInfo(denom);
       return info ? info[currency] || 0 : 0;
     },
@@ -107,27 +156,27 @@ export const useFormatter = defineStore('formatter', {
       return info ? info[`${currency}_24h_change`] || 0 : 0;
     },
     showChanges(v?: number) {
-      return v!==0 ? numeral(v).format("+0,0"): ""
+      return v !== 0 ? numeral(v).format("+0,0") : ""
     },
     tokenValue(token?: Coin) {
-      if(token) {
+      if (token) {
         return numeral(this.tokenValueNumber(token)).format("0,0.[00]")
       }
       return ""
     },
     specialDenom(denom: string) {
-      switch(true) {
+      switch (true) {
         case denom.startsWith('u'): return 6
         case denom.startsWith("a"): return 18
-        case denom==='inj': return 18
+        case denom === 'inj': return 18
       }
       return this.exponentForDenom(denom)
     },
     tokenAmountNumber(token?: Coin) {
-      if(!token || !token.denom) return 0
+      if (!token || !token.denom) return 0
 
       // find the symbol
-      const symbol = this.dashboard.coingecko[token.denom]?.symbol || token.denom 
+      const symbol = this.dashboard.coingecko[token.denom]?.symbol || token.denom
       // convert denomination to symbol
       const exponent = this.dashboard.coingecko[symbol?.toLowerCase()]?.exponent || this.specialDenom(token.denom);
       // caculate amount of symbol
@@ -135,7 +184,7 @@ export const useFormatter = defineStore('formatter', {
       return amount
     },
     tokenValueNumber(token?: Coin) {
-      if(!token || !token.denom) return 0
+      if (!token || !token.denom) return 0
 
       const amount = this.tokenAmountNumber(token)
       const value = amount * this.price(token.denom)
@@ -147,13 +196,13 @@ export const useFormatter = defineStore('formatter', {
     formatToken2(token: { denom: string; amount: string }, withDenom = true) {
       return this.formatToken(token, true, '0,0.[00]');
     },
-    
+
     findGlobalAssetConfig(denom: string) {
       const chains = Object.values(this.dashboard.chains)
-      for ( let i =0; i < chains.length; i++ ) {
+      for (let i = 0; i < chains.length; i++) {
         const assets = chains[i].assets
         const conf = assets.find(a => a.base === denom)
-        if(conf) {
+        if (conf) {
           return conf
         }
       }
@@ -177,15 +226,12 @@ export const useFormatter = defineStore('formatter', {
       if (denom) {
         let asset: Asset | undefined;
         if (denom && denom.startsWith('ibc/')) {
-           const ibcDenom = denom.replace('ibc/', '')
-           asset = this.ibcMetadata[ibcDenom];
-          if(!asset) {
+          const ibcDenom = denom.replace('ibc/', '')
+          asset = this.ibcMetadata[ibcDenom];
+          if (!asset) {
             // update ibc metadata if not exits in local cache
             this.fetchDenomMetadata(ibcDenom)
-          } else {
-            console.log("ibc metadata", asset)
           }
-
         } else {
           asset = this.findGlobalAssetConfig(denom)
         }
@@ -197,7 +243,7 @@ export const useFormatter = defineStore('formatter', {
             if (x.exponent >= unit.exponent) {
               unit = x;
             }
-          });          
+          });
           return unit.denom;
         }
         return denom;
@@ -211,10 +257,10 @@ export const useFormatter = defineStore('formatter', {
         let amount = Number(token.amount);
         let denom = token.denom;
 
-        let conf = mode === 'local'? this.blockchain.current?.assets?.find(
+        let conf = mode === 'local' ? this.blockchain.current?.assets?.find(
           // @ts-ignore
           (x) => x.base === token.denom || x.base.denom === token.denom
-        ): this.findGlobalAssetConfig(token.denom)
+        ) : this.findGlobalAssetConfig(token.denom)
 
         if (denom && denom.startsWith('ibc/')) {
           conf = this.ibcMetadata[denom.replace('ibc/', '')];
@@ -249,10 +295,10 @@ export const useFormatter = defineStore('formatter', {
         let amount = Number(token.amount);
         let denom = token.denom;
 
-        let conf = mode === 'local'? this.blockchain.current?.assets?.find(
+        let conf = mode === 'local' ? this.blockchain.current?.assets?.find(
           // @ts-ignore
           (x) => x.base === token.denom || x.base.denom === token.denom
-        ): this.findGlobalAssetConfig(token.denom)
+        ) : this.findGlobalAssetConfig(token.denom)
 
         if (denom && denom.startsWith('ibc/')) {
           conf = this.ibcMetadata[denom.replace('ibc/', '')];
@@ -274,15 +320,14 @@ export const useFormatter = defineStore('formatter', {
             denom = unit.denom; // keep display denom as defined (e.g., 'gonka')
           }
         }
-        if(amount < 0.000001) {
+        if (amount < 0.000001) {
           return `0 ${denom.substring(0, 10)}`;
         }
-        if(amount < 0.01) {
+        if (amount < 0.01) {
           fmt = '0.[000000]'
         }
-        return `${numeral(amount).format(fmt)} ${
-          withDenom ? denom.substring(0, 10) : ''
-        }`;
+        return `${numeral(amount).format(fmt)} ${withDenom ? denom.substring(0, 10) : ''
+          }`;
       }
       return '-';
     },
@@ -338,17 +383,17 @@ export const useFormatter = defineStore('formatter', {
       return decimal ? numeral(decimal).format('0.[00]%') : '-';
     },
     formatNumber(input?: number, fmt = '0.[00]') {
-      if(!input) return ""
+      if (!input) return ""
       return numeral(input).format(fmt)
     },
     numberAndSign(input: number, fmt = '+0,0') {
       return numeral(input).format(fmt);
     },
     toLocaleDate(time?: string | number | Date) {
-      if(!time) return ""
+      if (!time) return ""
       return new Date(time).toLocaleString(navigator.language)
     },
-    toDay(time?: string | number| Date, format = 'long') {
+    toDay(time?: string | number | Date, format = 'long') {
       if (!time) return '';
       if (format === 'long') {
         return dayjs(time).format('YYYY-MM-DD HH:mm');
@@ -367,15 +412,36 @@ export const useFormatter = defineStore('formatter', {
       }
       return dayjs(time).format('YYYY-MM-DD HH:mm:ss');
     },
-    messages(msgs: { '@type'?: string; typeUrl?: string }[]) {
+    messages(msgs: { '@type'?: string; typeUrl?: string; value?: Uint8Array }[]) {
       if (msgs) {
+        const formatMsgUrl = (url: string) => {
+          return url.substring(url.lastIndexOf('.') + 1).replace('Msg', '');
+        }
+        const getMsgName = (msg: { '@type'?: string; typeUrl?: string; value?: Uint8Array }): string | string[] => {
+          const typeUrl = msg['@type'] || msg.typeUrl || 'unknown';
+          if (typeUrl === '/cosmos.authz.v1beta1.MsgExec' && msg.value) {
+            try {
+              // Manual decoding for MsgExec since we might not have the full registry in this context easily accessible
+              // MsgExec structure: grantee (1), msgs (2) repeated Any
+              // We can use a simple protobuf reader or just rely on the fact that we have the value.
+              // To properly decode, we should use the registry if possible, but importing it here is fine.
+              const decoded = MsgExec.decode(msg.value);
+              if (decoded.msgs && decoded.msgs.length > 0) {
+                return decoded.msgs.map((inner: any) => {
+                  const innerName = getMsgName(inner);
+                  return `${formatMsgUrl(typeUrl)} > ${Array.isArray(innerName) ? innerName.join(', ') : innerName}`;
+                }).flat();
+              }
+            } catch (e) {
+              // fallback if decoding fails
+            }
+          }
+          return formatMsgUrl(typeUrl);
+        };
+
         const sum: Record<string, number> = msgs
-          .map((msg) => {
-            const msgType = msg['@type'] || msg.typeUrl || 'unknown';
-            return msgType
-              .substring(msgType.lastIndexOf('.') + 1)
-              .replace('Msg', '');
-          })
+          .map((msg) => getMsgName(msg))
+          .flat()
           .reduce((s, c) => {
             const sh: Record<string, number> = s;
             if (sh[c]) {

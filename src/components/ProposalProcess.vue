@@ -34,21 +34,12 @@ const format = useFormatter();
 const denominator = computed<string>(() => {
   const isVoting = props.status === 'PROPOSAL_STATUS_VOTING_PERIOD';
   if (isVoting) {
-    console.log('denominator validatorStore.activeStakingTotal', validatorStore.activeStakingTotal);
     return String(validatorStore.activeStakingTotal || 0);
   }
-  console.log('denominator total', total.value);
   return total.value.toString();
 });
 
-onMounted(async () => {
-  try {
-    const needParticipants = !validatorStore.participantsMap || Object.keys(validatorStore.participantsMap).length === 0;
-    if (needParticipants) {
-      await validatorStore.init();
-    }
-  } catch {}
-});
+
 
 const yes = computed(() =>  
   format.calculatePercent(props.tally?.yes, denominator.value)
