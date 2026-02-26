@@ -11,7 +11,7 @@ import CardStatisticsVertical from '@/components/CardStatisticsVertical.vue';
 import ModelPerformanceChart from '@/components/charts/ModelPerformanceChart.vue';
 import { ref, computed, watch, onMounted } from 'vue';
 import { useWalletStore, useBaseStore, useBlockchain } from '@/stores';
-import ConnectWallet from '@/components/ConnectWallet.vue';
+import type ConnectWallet from '@/components/ConnectWallet.vue';
 import { useQRCode } from '@vueuse/integrations/useQRCode';
 
 const props = defineProps(['chain']);

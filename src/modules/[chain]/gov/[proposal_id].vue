@@ -976,6 +976,28 @@ function metaItem(metadata: string|undefined): { title: string; summary: string 
   }
   return { title: metadata, summary: '' }
 }
+
+// Pagination logic for messages
+const messagePage = ref(1);
+
+const proposalMessages = computed(() => {
+    // If we have messages array (v1), use it
+    if(proposal.value.messages && proposal.value.messages.length > 0) {
+        return proposal.value.messages;
+    }
+    // Fallback to legacy content (beta1)
+    return [proposal.value.content];
+});
+
+const currentMessage = computed(() => {
+    const list = proposalMessages.value;
+    const page = messagePage.value;
+    if(!list || list.length === 0) return {};
+    
+    // Safety check
+    const index = Math.max(0, Math.min(page - 1, list.length - 1));
+    return list[index];
+});
 </script>
 
 <template>
@@ -1033,12 +1055,13 @@ function metaItem(metadata: string|undefined): { title: string; summary: string 
            <!-- Vote Button -->
            <div v-if="proposal.status === 'PROPOSAL_STATUS_VOTING_PERIOD'" class="ml-auto">
                 <div class="text-xs text-transparent mb-1 uppercase tracking-wider select-none">Action</div>
-                <button
-                     class="btn btn-primary px-8 h-10 min-h-0 text-lg uppercase font-bold"
-                     @click="dialog.open('vote', { proposal_id })"
-                >
-                     {{ $t('gov.btn_vote') }}
-                </button>
+                 <label
+                      for="vote"
+                      class="btn btn-primary px-8 h-10 min-h-0 text-lg uppercase font-bold inline-flex items-center justify-center cursor-pointer"
+                      @click="dialog.open('vote', { proposal_id })"
+                 >
+                      {{ $t('gov.btn_vote') }}
+                 </label>
            </div>
        </div>
 
@@ -1282,7 +1305,21 @@ function metaItem(metadata: string|undefined): { title: string; summary: string 
 
     <!-- Tab Content: Details -->
     <div v-if="tab === 'details'" class="bg-base-100 rounded-lg shadow p-6">
-         <ObjectElement :value="proposal.content" />
+         <!-- Pagination for multiple messages -->
+         <div v-if="proposalMessages.length > 1" class="mb-4">
+            <PaginationBar 
+                :total="String(proposalMessages.length)" 
+                :limit="1" 
+                :callback="(p: number) => messagePage = p"
+                :page="messagePage"
+                :maxVisible="5"
+            />
+             <div class="text-center text-xs text-base-content/60 uppercase tracking-widest mb-4">
+                 Message {{ messagePage }} of {{ proposalMessages.length }}
+             </div>
+         </div>
+
+         <ObjectElement :value="currentMessage" />
     </div>
 
     <!-- Tab Content: JSON -->

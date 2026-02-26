@@ -385,6 +385,7 @@
     "insufficient_balance": "Saldo insuficiente",
     "coming_soon": "Próximamente",
     "feature_unavailable": "Esta función estará disponible pronto.",
+    "please_connect_wallet_first": "Por favor, conecte la billetera primero",
     "meta_description": "Los desarrolladores crean e implementan aplicaciones de IA en la red descentralizada Gonka, aprovechando el cómputo distribuido para ejecutar sus modelos.",
     "hints": {
       "ai_tokens_last_week": "Total de tokens de IA de entrada y salida procesados durante las últimas siete épocas.",

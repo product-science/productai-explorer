@@ -37,6 +37,7 @@ export interface GovProposal {
       time?: string | number;
     };
   };
+  messages?: any[];
   status: string;
   final_tally_result: {
     yes: string;
@@ -51,7 +52,7 @@ export interface GovProposal {
   voting_end_time: string;
   is_expedited: boolean;
   voterStatus?: string
-//   VoteOption[];
+  //   VoteOption[];
 }
 
 export interface VoteOption {

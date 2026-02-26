@@ -12,7 +12,7 @@ import {
   operatorAddressToAccount,
   pubKeyToValcons,
 } from '@/libs';
-import { type PaginatedTxs, type Validator } from '@/types';
+import type { PaginatedTxs, Validator } from '@/types';
 
 const props = defineProps(['validator', 'chain']);
 

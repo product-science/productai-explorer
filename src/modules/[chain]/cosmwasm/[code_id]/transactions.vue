@@ -66,7 +66,7 @@ onMounted(() => {
 
   wasmStore.wasmClient.getWasmContractQueries(contractAddress).then((res) => {
     console.log('queries: ', res);
-    queries.value = res;
+    queries.value = res || [];
     if (res && res.length > 0) {
       selectQuery(res[0]);
     }

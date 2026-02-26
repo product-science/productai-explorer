@@ -87,10 +87,10 @@ function suggest() {
             .then(() => {
                 error.value = ""; // Clear any previous errors
             })
-            .catch(e => {
+            .catch((e: any) => {
                 error.value = e.message || 'Failed to suggest chain to Keplr';
             });
-    } catch (e) {
+    } catch (e: any) {
         error.value = 'Invalid chain configuration: ' + (e.message || 'Unknown error');
     }
 }

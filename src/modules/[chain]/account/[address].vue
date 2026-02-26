@@ -38,6 +38,7 @@ const vestingRewardsTotal = ref('0')
 const vestingRewardsPage = ref(1)
 const vestingRewardsLimit = 50
 const inferences = ref({ stats: [] } as InferenceResponse);
+const bridgedBalances = ref<any[]>([]);
 const chart = {};
 
 const valueFmt = (v: number) => format.formatNumber(v, '0,0.[00]');
@@ -132,6 +133,9 @@ function loadAccount(address: string) {
 
   // Load inference stats
   loadInferenceStats(address);
+
+  // Load bridged balances
+  loadBridgedBalances(address);
 }
 
 async function loadInferenceStats(address: string) {
@@ -141,6 +145,16 @@ async function loadInferenceStats(address: string) {
   } catch (error) {
     console.error('Failed to load inference stats:', error);
     inferences.value = { stats: [] };
+  }
+}
+
+async function loadBridgedBalances(address: string) {
+  try {
+    const response = await blockchain.getWrappedTokenBalances(address);
+    bridgedBalances.value = response?.balances || [];
+  } catch (error) {
+    console.error('Failed to load bridged balances:', error);
+    bridgedBalances.value = [];
   }
 }
 
@@ -404,6 +418,34 @@ async function toggleGroup(denom: string) {
   }
 }
 
+const expandedBridgedGroups = ref<Record<string, boolean>>({});
+
+const groupedBridgedBalances = computed(() => {
+  const groups: Record<string, { total: number, items: any[] }> = {};
+  
+  bridgedBalances.value.forEach(b => {
+    const amount = Number(b.formatted_balance || 0);
+    if (amount <= 0) return;
+    
+    const displayDenom = b.symbol || 'Unknown';
+    if (!groups[displayDenom]) {
+      groups[displayDenom] = { total: 0, items: [] };
+    }
+    groups[displayDenom].total += amount;
+    groups[displayDenom].items.push(b);
+  });
+
+  return Object.entries(groups).map(([denom, data]) => ({
+    denom,
+    total: data.total,
+    items: data.items
+  })).sort((a, b) => b.total - a.total);
+});
+
+function toggleBridgedGroup(denom: string) {
+  expandedBridgedGroups.value[denom] = !expandedBridgedGroups.value[denom];
+}
+
 function onVestingRewardsPageChange(page: number) {
   loadVestingRewards(props.address, page);
 }
@@ -612,6 +654,71 @@ function onVestingRewardsPageChange(page: number) {
                                </td>
                                <td class="py-2 text-right pr-4" v-if="showValuations">
                                    ${{ format.tokenValue(item) }}
+                               </td>
+                               <td></td>
+                           </tr>
+                       </template>
+                  </template>
+                </tbody>
+              </table>
+             </div>
+          </div>
+
+          <!-- Bridged Balances (Grouped Table) -->
+          <div v-if="groupedBridgedBalances.length > 0" class="mt-4">
+             <h3 class="text-sm font-bold mb-2 opacity-75">Bridged Assets</h3>
+             <div class="overflow-x-auto">
+              <table class="table w-full text-sm">
+                <thead>
+                  <tr>
+                    <th class="py-2 pl-4">Type</th>
+                    <th class="py-2 text-right">Amount</th>
+                    <th class="py-2 text-right pr-4" v-if="showValuations">Value</th>
+                    <th class="py-2 w-8"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template v-for="(group, gIndex) in groupedBridgedBalances" :key="'bridge-group-'+gIndex">
+                      <!-- Group Header Row -->
+                      <tr class="hover cursor-pointer" @click="toggleBridgedGroup(group.denom)">
+                        <td class="py-2 pl-4">
+                          <div class="flex items-center">
+                            <div class="w-7 h-7 rounded overflow-hidden flex items-center justify-center relative mr-3">
+                              <Icon icon="mdi-bridge" class="text-secondary" size="18" />
+                              <div class="absolute inset-0 bg-secondary opacity-20"></div>
+                            </div>
+                            <span class="font-semibold">{{ group.denom }}</span>
+                            <span class="ml-2 text-xs opacity-50 bg-base-300 px-1 rounded">{{ group.items.length }} src</span>
+                          </div>
+                        </td>
+                        <td class="py-2 text-right font-medium">
+                          {{ format.formatNumber(group.total) }}
+                         </td>
+                        <td class="py-2 text-right pr-4" v-if="showValuations">
+                           -
+                        </td>
+                        <td class="py-2 text-center">
+                            <Icon :icon="expandedBridgedGroups[group.denom] ? 'mdi-chevron-up' : 'mdi-chevron-down'" />
+                        </td>
+                      </tr>
+                      
+                      <!-- Expanded Details Rows -->
+                       <template v-if="expandedBridgedGroups[group.denom]">
+                           <tr v-for="(item, iIndex) in group.items" :key="'bridge-item-'+iIndex" class="bg-base-200/30 text-xs">
+                               <td class="py-2 pl-12" colspan="1">
+                                   <div class="flex flex-col">
+                                       <div class="flex items-center gap-2">
+                                           <span class="font-mono opacity-75">{{ item.token_info?.chainId || 'Unknown' }}</span>
+                                           <Icon icon="mdi-check-circle" class="text-success" size="16" />
+                                        </div>
+                                       <span class="opacity-50 text-[10px] break-all">{{ item.token_info?.wrappedContractAddress || item.token_info?.contractAddress || 'No Address' }}</span>
+                                   </div>
+                               </td>
+                               <td class="py-2 text-right">
+                                   {{ format.formatNumber(Number(item.formatted_balance || 0)) }}
+                               </td>
+                               <td class="py-2 text-right pr-4" v-if="showValuations">
+                                   -
                                </td>
                                <td></td>
                            </tr>

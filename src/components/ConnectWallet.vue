@@ -7,7 +7,9 @@ import { CosmosRestClient } from '@/libs/client';
 // TypeScript declarations for wallet objects
 declare global {
   interface Window {
+    // @ts-ignore
     keplr?: any;
+    // @ts-ignore
     leap?: any;
     ethereum?: {
       request: (params: { method: string; params?: any }) => Promise<any>;
@@ -276,7 +278,7 @@ async function addChainToCosmosSnap(): Promise<boolean> {
       }
     };
     
-    await window.ethereum.request({
+    await window.ethereum?.request({
       method: 'wallet_invokeSnap',
       params: {
         snapId: 'npm:@cosmsnap/snap',
@@ -299,7 +301,7 @@ async function addChainToCosmosSnap(): Promise<boolean> {
 // Get address from MetaMask Cosmos snap
 async function getCosmosSnapAddress(): Promise<string> {
   try {
-    const address = await window.ethereum.request({
+    const address = await window.ethereum?.request({
       method: 'wallet_invokeSnap',
       params: {
         snapId: 'npm:@cosmsnap/snap',

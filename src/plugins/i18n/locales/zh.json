@@ -373,6 +373,7 @@
     "insufficient_balance": "余额不足",
     "coming_soon": "敬请期待",
     "feature_unavailable": "该功能即将上线。",
+    "please_connect_wallet_first": "请先连接钱包",
     "meta_description": "开发者在去中心化的 Gonka 网络内构建并部署 AI 应用，利用分布式算力运行其模型。",
     "hints": {
       "ai_tokens_last_week": "过去七个 epoch 期间处理的输入与输出 AI 代币总量",

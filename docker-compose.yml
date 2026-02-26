@@ -2,24 +2,18 @@ services:
   explorer:
     image: gcr.io/decentralized-ai/ping-pub-explorer:latest
     ports:
-      - "5173:5173"  # Frontend
-      - "${PROXY_PORT:-3000}:${PROXY_PORT:-3000}"  # Proxy server - uses PORT env var with 3000 as default
+      - "5173:80" # Map host port 5173 to container's Nginx port 80
     environment:
       # Configure these for your Cosmos node
-      - PROXY_HOST=http://127.0.0.1
-      - PROXY_PORT=3000
-      - API_ENDPOINT=http://genesis-node:1317
-      - RPC_ENDPOINT=http://genesis-node:26657
-    # For development with hot reload, you can uncomment these lines
-    volumes:
-      - ./src:/app/src
-      - ./server:/app/server
+      # These variables replace the ${API_ENDPOINT} and ${RPC_ENDPOINT} placeholders in nginx.conf.template
+      - API_ENDPOINT=${API_ENDPOINT:-http://genesis-node:1317}
+      - RPC_ENDPOINT=${RPC_ENDPOINT:-http://genesis-node:26657}
     networks:
       - chain-public
     extra_hosts:
-      - "host.docker.internal:host-gateway"  # For Docker to reach host machine services
+      - "host.docker.internal:host-gateway" # For Docker to reach host machine services
     restart: unless-stopped
 
 networks:
   chain-public:
-   name: chain-public
+    name: chain-public

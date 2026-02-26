@@ -26,7 +26,7 @@ let positions = ref([]);
 let validatorsData = ref([] as any);
 onMounted(async () => {
   // stakingStore.init();
-  validatorsData.value = await stakingStore.fetchAcitveValdiators();
+  validatorsData.value = await stakingStore.fetchActiveValidators();
   rpc.value = rpcList.value[0].address + '/consensus_state';
   await fetchPosition();
   update();

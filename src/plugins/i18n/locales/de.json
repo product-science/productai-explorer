@@ -386,6 +386,7 @@
     "insufficient_balance": "Unzureichendes Guthaben",
     "coming_soon": "Bald verfügbar",
     "feature_unavailable": "Diese Funktion ist bald verfügbar.",
+    "please_connect_wallet_first": "Bitte verbinden Sie zuerst die Brieftasche",
     "meta_description": "Entwickler erstellen und deployen AI‑Anwendungen im dezentralen Gonka‑Netzwerk und nutzen die verteilte Rechenleistung für ihre Modelle.",
     "hints": {
       "ai_tokens_last_week": "In den letzten sieben Epochen verarbeitete Gesamtzahl an Eingabe‑ und Ausgabe‑AI‑Tokens.",

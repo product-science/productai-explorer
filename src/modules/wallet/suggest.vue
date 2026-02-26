@@ -42,7 +42,7 @@ async function initParamsForKeplr() {
     throw new Error("Endpoint does not set");
   }
 
-  const client = CosmosRestClient.newDefault(chain.endpoints.rest.at(0).address || "");
+  const client = CosmosRestClient.newDefault(chain.endpoints.rest?.at(0)?.address || "");
   const baseBlock = await client.getBaseBlockLatest();
   const chainId = baseBlock.block.header.chain_id;
 

@@ -352,7 +352,7 @@ function openConnectWallet() {
           </div>
           <div class="px-4 pb-4">
               <!-- Not Connected State -->
-              <div v-if="!walletAddress" class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-6 relative min-h-[96px] grid place-items-center">
+              <div v-if="!walletAddress" class="bg-gray-100 dark:bg-[#373f59] rounded-lg px-4 py-6 relative min-h-[96px] grid place-items-center">
                 <div class="absolute top-2 right-2 text-primary" @mouseenter="isWalletHintHover = true" @mouseleave="isWalletHintHover = false">
                   <Icon icon="mdi:information" />
                 </div>
@@ -370,7 +370,7 @@ function openConnectWallet() {
               <!-- Connected State -->
               <div v-else class="space-y-3">
                   <!-- Wallet Info -->
-                  <div class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-3">
+                  <div class="bg-gray-100 dark:bg-[#373f59] rounded-lg px-4 py-3">
                       <div class="flex items-center justify-between mb-2">
                           <span class="text-sm font-semibold text-primary capitalize">
                               {{ walletStore.connectedWallet?.wallet || 'Unknown' }}
@@ -391,7 +391,7 @@ function openConnectWallet() {
                       
                       <!-- Address -->
                       <div class="text-center mb-3">
-                          <div class="text-xs text-gray-600 dark:text-gray-400 mb-1">Address:</div>
+                          <div class="text-xs text-gray-600 dark:text-gray-400 mb-1">{{ $t('developer.address_label') }}</div>
                           <div 
                               class="text-xs font-mono bg-white dark:bg-gray-800 rounded px-2 py-1 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
                               @click="copyAddress(walletAddress)"
@@ -427,7 +427,7 @@ function openConnectWallet() {
               {{ $t('developer.use_api') }}
           </div>
           <div class="px-4 pb-4">
-              <div class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-6 relative min-h-[96px] grid place-items-center">
+              <div class="bg-gray-100 dark:bg-[#373f59] rounded-lg px-4 py-6 relative min-h-[96px] grid place-items-center">
                 <div class="absolute top-2 right-2 text-primary" @mouseenter="isApiHintHover = true" @mouseleave="isApiHintHover = false">
                   <Icon icon="mdi:information" />
                 </div>
@@ -452,14 +452,14 @@ function openConnectWallet() {
   <div class="toast toast-end" v-show="showCopyToast === 1">
       <div class="alert alert-success">
           <div class="text-xs md:!text-sm">
-              <span>{{ tipMsg.msg }}</span>
+              <span>{{ $t('developer.copy_success') }}</span>
           </div>
       </div>
   </div>
   <div class="toast toast-end" v-show="showCopyToast === 2">
       <div class="alert alert-error">
           <div class="text-xs md:!text-sm">
-              <span>{{ tipMsg.msg }}</span>
+              <span>{{ $t('developer.copy_error') }}</span>
           </div>
       </div>
   </div>

@@ -375,6 +375,7 @@
     "insufficient_balance": "Saldo tidak mencukupi",
     "coming_soon": "Segera hadir",
     "feature_unavailable": "Fitur ini akan tersedia segera.",
+    "please_connect_wallet_first": "Harap hubungkan dompet terlebih dahulu",
     "meta_description": "Pengembang membangun dan menerapkan aplikasi AI di jaringan terdesentralisasi Gonka, memanfaatkan komputasi terdistribusi untuk menjalankan model mereka.",
     "hints": {
       "ai_tokens_last_week": "Total token AI input dan output yang diproses selama tujuh epoch terakhir.",

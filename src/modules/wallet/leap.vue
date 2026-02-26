@@ -72,10 +72,10 @@ async function initParamsForLeap() {
         },
         features: chain.keplrFeatures || [],
         // Leap specific fields
-        image: chain.image || '',
+        image: (chain as any).image || '',
         theme: {
-            primaryColor: chain.theme?.primaryColor || '#1D1D1D',
-            gradient: chain.theme?.gradient || 'linear-gradient(180deg, #1D1D1D 0%, #1D1D1D 100%)',
+            primaryColor: (chain as any).theme?.primaryColor || '#1D1D1D',
+            gradient: (chain as any).theme?.gradient || 'linear-gradient(180deg, #1D1D1D 0%, #1D1D1D 100%)',
         },
     }, null, '\t')
 }
@@ -101,11 +101,11 @@ function suggest() {
                 console.log('Chain suggestion successful');
                 error.value = ""; // Clear any previous errors
             })
-            .catch(e => {
+            .catch((e: any) => {
                 console.error('Leap suggestion error:', e);
                 error.value = e.message || 'Failed to suggest chain to Leap';
             });
-    } catch (e) {
+    } catch (e: any) {
         console.error('JSON parse error:', e);
         error.value = 'Invalid chain configuration: ' + (e.message || 'Unknown error');
     }

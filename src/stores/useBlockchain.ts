@@ -347,6 +347,15 @@ export const useBlockchain = defineStore('blockchain', {
       return await get(url);
     },
 
+    async getBridgeAddresses(chainId: string) {
+      if (!this.endpoint.address) {
+        throw new Error('Chain API endpoint not configured');
+      }
+
+      const url = `${this.endpoint.address}/productscience/inference/inference/bridge_addresses/${chainId}`;
+      return await get(url);
+    },
+
     // Stream Vesting API
     async getTotalVesting(address: string) {
       if (!this.endpoint.address) {
@@ -437,6 +446,8 @@ export const useBlockchain = defineStore('blockchain', {
         this.chainName = caseSensitiveName;
         // Setup inference API when chain changes
         this.setupInferenceApi();
+        // Hydrate connected wallet state for the new chain
+        useWalletStore().hydrateWallet();
       }
     },
     supportModule(mod: string) {

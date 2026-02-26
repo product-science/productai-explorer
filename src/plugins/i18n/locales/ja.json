@@ -387,6 +387,7 @@
     "insufficient_balance": "残高不足です",
     "coming_soon": "近日公開",
     "feature_unavailable": "この機能は近日公開予定です。",
+    "please_connect_wallet_first": "まずウォレットを接続してください",
     "meta_description": "開発者は分散型Gonkaネットワーク上でAIアプリを構築・展開し、分散コンピューティングを活用してモデルを実行します。",
     "hints": {
       "ai_tokens_last_week": "直近7エポックで処理された入力/出力AIトークンの合計",

@@ -386,6 +386,7 @@
     "insufficient_balance": "잔액이 부족합니다",
     "coming_soon": "곧 제공",
     "feature_unavailable": "이 기능은 곧 제공될 예정입니다.",
+    "please_connect_wallet_first": "먼저 지갑을 연결해주세요",
     "meta_description": "개발자는 분산형 Gonka 네트워크에서 AI 애플리케이션을 개발·배포하고, 분산 컴퓨팅을 활용해 모델을 실행합니다.",
     "hints": {
       "ai_tokens_last_week": "최근 7개 에포크 동안 처리된 입력/출력 AI 토큰 총합",
