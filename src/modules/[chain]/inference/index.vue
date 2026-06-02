@@ -37,7 +37,7 @@ onMounted(() => {
 // QR code for wallet address - fixed implementation
 const qrCodeSource = ref('');
 const qrcode = useQRCode(qrCodeSource, {
-  logo: '/public/logos/gonka-testnet/logo-small.png',
+  logo: '/logos/gonka-mainnet/logo-small.svg',
   logoOptions: {
     width: 40,
     height: 40,

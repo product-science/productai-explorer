@@ -7,6 +7,7 @@ import {
 } from '@/stores';
 import { onMounted, computed, ref } from 'vue';
 import { Icon } from '@iconify/vue';
+import ValidatorEpochStatsWidget from '@/components/ValidatorEpochStatsWidget.vue';
 import {
   consensusPubkeyToHexAddress,
   operatorAddressToAccount,
@@ -263,6 +264,8 @@ const tipMsg = computed(() => {
         </div>
       </div>
     </div>
+
+    <ValidatorEpochStatsWidget :validator="validator" />
 
     <div class="mt-5 bg-base-100 shadow rounded p-4">
       <div class="text-lg mb-4 font-semibold">{{ $t('account.transactions') }}</div>

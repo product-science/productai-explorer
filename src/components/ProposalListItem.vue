@@ -10,7 +10,11 @@ import type { PaginatedProposals } from '@/types';
 import ProposalProcess from './ProposalProcess.vue';
 import type { PropType } from 'vue';
 import { computed, ref } from 'vue';
-import { formatProposalType } from '@/libs/utils';
+import {
+  formatProposalType,
+  proposalHasMultipleMessages,
+  proposalPrimaryMsgType,
+} from '@/libs/utils';
 const dialog = useTxDialog();
 defineProps({
   proposals: { type: Object as PropType<PaginatedProposals> },
@@ -24,7 +28,21 @@ const statusMap: Record<string, string> = {
   PROPOSAL_STATUS_VOTING_PERIOD: 'VOTING',
   PROPOSAL_STATUS_PASSED: 'PASSED',
   PROPOSAL_STATUS_REJECTED: 'REJECTED',
+  PROPOSAL_STATUS_FAILED: 'FAILED',
 };
+
+function proposalSummaryLine(item: {
+  summary?: string;
+  content?: { description?: string };
+  metadata?: string;
+}): string {
+  return (
+    item?.summary ||
+    item?.content?.description ||
+    metaItem(item?.metadata)?.summary ||
+    ''
+  );
+}
 const voterStatusMap: Record<string, string> = {
   VOTE_OPTION_NO_WITH_VETO: '',
   VOTE_OPTION_YES: 'success',
@@ -62,11 +80,21 @@ function metaItem(metadata: string|undefined): { title: string; summary: string 
                 {{ item?.content?.title || item?.title || metaItem(item?.metadata)?.title }}
               </RouterLink>
               <div
-                v-if="item.content"
+                v-if="proposalHasMultipleMessages(item) || proposalPrimaryMsgType(item)"
                 class="bg-[#f6f2ff] text-[#9c6cff] dark:bg-gray-600 dark:text-gray-300 inline-block rounded-full px-2 py-[1px] text-xs mb-1"
               >
-                {{ formatProposalType(item.content['@type']) }} 
+                {{
+                  proposalHasMultipleMessages(item)
+                    ? $t('gov.multiple_messages')
+                    : formatProposalType(proposalPrimaryMsgType(item))
+                }}
               </div>
+              <p
+                v-if="proposalSummaryLine(item)"
+                class="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1 max-w-xl"
+              >
+                {{ proposalSummaryLine(item) }}
+              </p>
             </div>
           </td>
           <td class="w-60">
@@ -159,11 +187,21 @@ function metaItem(metadata: string|undefined): { title: string; summary: string 
         <div class="grid grid-cols-4 mt-2 mb-2">
           <div class="col-span-2">
             <div
-              v-if="item.content"
+              v-if="proposalHasMultipleMessages(item) || proposalPrimaryMsgType(item)"
               class="bg-[#f6f2ff] text-[#9c6cff] dark:bg-gray-600 dark:text-gray-300 inline-block rounded-full px-2 py-[1px] text-xs mb-1"
             >
-              {{ formatProposalType(item.content['@type']) }}
+              {{
+                proposalHasMultipleMessages(item)
+                  ? $t('gov.multiple_messages')
+                  : formatProposalType(proposalPrimaryMsgType(item))
+              }}
             </div>
+            <p
+              v-if="proposalSummaryLine(item)"
+              class="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 mt-1"
+            >
+              {{ proposalSummaryLine(item) }}
+            </p>
           </div>
 
           <div

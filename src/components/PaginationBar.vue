@@ -1,4 +1,5 @@
 <script lang="ts" setup>
+import { Icon } from '@iconify/vue';
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
@@ -13,6 +14,11 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
   // Max visible pagination buttons (odd number recommended, usually 5 or 3)
   maxVisible: { type: Number, default: 5 },
+  // Optional refresh button rendered next to, but detached from, the paginator
+  showRefresh: { type: Boolean, default: false },
+  refreshLoading: { type: Boolean, default: false },
+  refreshCallback: { type: Function, default: undefined },
+  refreshLabel: { type: String, default: 'Refresh' },
 });
 
 const current = ref(props.page || 1);
@@ -101,78 +107,96 @@ function gotoLast() {
 function gotoBy(delta: number) {
   goto(current.value + delta);
 }
+
+function refresh() {
+  if (props.refreshLoading || !props.refreshCallback) return;
+  props.refreshCallback();
+}
 </script>
 <template>
   <div class="my-5 text-center">
-    <div v-if="total && limit && pageCount > 1" class="btn-group">
-      <!-- Jump to first -->
+    <div class="inline-flex items-center gap-3">
+      <div v-if="total && limit && pageCount > 1" class="btn-group">
+        <!-- Jump to first -->
+        <button
+          class="btn bg-gray-100 text-gray-500 hover:text-white border-none dark:bg-gray-800 dark:text-white"
+          :class="{ 'btn-disabled opacity-50 cursor-not-allowed': current === minPage }"
+          :disabled="current === minPage"
+          @click="gotoFirst"
+        >
+          &laquo;
+        </button>
+
+        <!-- Jump by -3 pages -->
+        <button
+          class="btn bg-gray-100 text-gray-500 hover:text-white border-none dark:bg-gray-800 dark:text-white"
+          :class="{ 'btn-disabled opacity-50 cursor-not-allowed': current === minPage }"
+          :disabled="current === minPage"
+          @click="gotoBy(-3)"
+        >
+          &lsaquo;
+        </button>
+
+        <!-- Left ellipsis -->
+        <button
+          v-if="showLeftEllipsis"
+          class="btn bg-gray-100 text-gray-500 border-none dark:bg-gray-800 dark:text-white btn-disabled opacity-50 cursor-not-allowed"
+          :disabled="true"
+        >
+          ...
+        </button>
+
+        <!-- Page numbers (max 5) -->
+        <button
+          v-for="page in pageNumbers"
+          :key="page"
+          class="btn bg-gray-100 text-gray-500 hover:text-white border-none dark:bg-gray-800 dark:text-white"
+          :class="{ '!btn-primary': page === current }"
+          @click="goto(page)"
+        >
+          <span v-if="!(loading && page === current)">{{ page }}</span>
+          <span v-else class="loading loading-spinner loading-xs"></span>
+        </button>
+
+        <!-- Right ellipsis -->
+        <button
+          v-if="showRightEllipsis"
+          class="btn bg-gray-100 text-gray-500 border-none dark:bg-gray-800 dark:text-white btn-disabled opacity-50 cursor-not-allowed"
+          :disabled="true"
+        >
+          ...
+        </button>
+
+        <!-- Jump by +3 pages -->
+        <button
+          class="btn bg-gray-100 text-gray-500 hover:text-white border-none dark:bg-gray-800 dark:text-white"
+          :class="{ 'btn-disabled opacity-50 cursor-not-allowed': current === pageCount }"
+          :disabled="current === pageCount"
+          @click="gotoBy(3)"
+        >
+          &rsaquo;
+        </button>
+
+        <!-- Jump to last -->
+        <button
+          class="btn bg-gray-100 text-gray-500 hover:text-white border-none dark:bg-gray-800 dark:text-white"
+          :class="{ 'btn-disabled opacity-50 cursor-not-allowed': current === pageCount }"
+          :disabled="current === pageCount"
+          @click="gotoLast"
+        >
+          &raquo;
+        </button>
+      </div>
+
       <button
+        v-if="showRefresh"
         class="btn bg-gray-100 text-gray-500 hover:text-white border-none dark:bg-gray-800 dark:text-white"
-        :class="{ 'btn-disabled opacity-50 cursor-not-allowed': current === 1 }"
-        :disabled="current === 1"
-        @click="gotoFirst"
+        :class="{ 'btn-disabled opacity-50 cursor-not-allowed': refreshLoading }"
+        :disabled="refreshLoading"
+        @click="refresh"
       >
-        &laquo;
-      </button>
-
-      <!-- Jump by -3 pages -->
-      <button
-        class="btn bg-gray-100 text-gray-500 hover:text-white border-none dark:bg-gray-800 dark:text-white"
-        :class="{ 'btn-disabled opacity-50 cursor-not-allowed': current === 1 }"
-        :disabled="current === 1"
-        @click="gotoBy(-3)"
-      >
-        &lsaquo;
-      </button>
-
-      <!-- Left ellipsis -->
-      <button
-        v-if="showLeftEllipsis"
-        class="btn bg-gray-100 text-gray-500 border-none dark:bg-gray-800 dark:text-white btn-disabled opacity-50 cursor-not-allowed"
-        :disabled="true"
-      >
-        ...
-      </button>
-
-      <!-- Page numbers (max 5) -->
-      <button
-        v-for="page in pageNumbers"
-        :key="page"
-        class="btn bg-gray-100 text-gray-500 hover:text-white border-none dark:bg-gray-800 dark:text-white"
-        :class="{ '!btn-primary': page === current }"
-        @click="goto(page)"
-      >
-        <span v-if="!(loading && page === current)">{{ page }}</span>
-        <span v-else class="loading loading-spinner loading-xs"></span>
-      </button>
-
-      <!-- Right ellipsis -->
-      <button
-        v-if="showRightEllipsis"
-        class="btn bg-gray-100 text-gray-500 border-none dark:bg-gray-800 dark:text-white btn-disabled opacity-50 cursor-not-allowed"
-        :disabled="true"
-      >
-        ...
-      </button>
-
-      <!-- Jump by +3 pages -->
-      <button
-        class="btn bg-gray-100 text-gray-500 hover:text-white border-none dark:bg-gray-800 dark:text-white"
-        :class="{ 'btn-disabled opacity-50 cursor-not-allowed': current === pageCount }"
-        :disabled="current === pageCount"
-        @click="gotoBy(3)"
-      >
-        &rsaquo;
-      </button>
-
-      <!-- Jump to last -->
-      <button
-        class="btn bg-gray-100 text-gray-500 hover:text-white border-none dark:bg-gray-800 dark:text-white"
-        :class="{ 'btn-disabled opacity-50 cursor-not-allowed': current === pageCount }"
-        :disabled="current === pageCount"
-        @click="gotoLast"
-      >
-        &raquo;
+        <Icon icon="mdi:refresh" class="text-lg" :class="{ 'animate-spin': refreshLoading }" />
+        <span>{{ refreshLabel }}</span>
       </button>
     </div>
   </div>

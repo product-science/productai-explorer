@@ -213,3 +213,17 @@ export function formatProposalType(type?: string) {
   return name.replace(/([A-Z])/g, ' $1').trim();
 }
 
+/** Legacy `content` or first governance message (v1 `messages` array). */
+export function proposalPrimaryMsgType(
+  p: { messages?: { '@type'?: string }[]; content?: { '@type'?: string } } | null | undefined
+): string | undefined {
+  return p?.content?.['@type'] || p?.messages?.[0]?.['@type'];
+}
+
+export function proposalHasMultipleMessages(
+  p: { messages?: unknown[] } | null | undefined
+): boolean {
+  const n = p?.messages?.length ?? 0;
+  return n > 1;
+}
+

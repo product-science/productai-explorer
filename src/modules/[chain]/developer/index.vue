@@ -11,7 +11,7 @@ import CardStatisticsVertical from '@/components/CardStatisticsVertical.vue';
 import { ref, computed, watch, onMounted } from 'vue';
 import { useWalletStore, useBaseStore, useBlockchain } from '@/stores';
 import ConnectWallet from '@/components/ConnectWallet.vue';
-import LiquidityPoolWidget from '@/components/LiquidityPoolWidget.vue';
+import ExchangeWidget from '@/components/ExchangeWidget.vue';
 import { useQRCode } from '@vueuse/integrations/useQRCode';
 
 const props = defineProps(['chain']);
@@ -41,7 +41,7 @@ const throughput = computed(() => validatorStore.displayTotalPower);
 // QR code for wallet address - fixed implementation
 const qrCodeSource = ref('');
 const qrcode = useQRCode(qrCodeSource, {
-  logo: '/public/logos/gonka-mainnet/logo-small.svg',
+  logo: '/logos/gonka-mainnet/logo-small.svg',
   logoOptions: {
     width: 40,
     height: 40,
@@ -418,8 +418,8 @@ function openConnectWallet() {
           </div>
       </div>
 
-      <!-- Liquidity Pool Widget -->
-      <LiquidityPoolWidget :chain="chain" />
+      <!-- Exchange Widget -->
+      <ExchangeWidget :chain="chain" />
 
       <!-- Use Gonka API Widget -->
       <div class="bg-base-100 rounded shadow">

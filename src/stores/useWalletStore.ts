@@ -532,6 +532,13 @@ export const useWalletStore = defineStore('walletStore', {
           localStorage.setItem(key, JSON.stringify(value));
         }
 
+        // Fetch balances and assets immediately on connection
+        try {
+          await this.loadMyAsset();
+        } catch (error) {
+          console.error('Error loading assets on wallet connection:', error);
+        }
+
         // Auto-submit participant after wallet connection
         await this.autoSubmitParticipant();
       } else {

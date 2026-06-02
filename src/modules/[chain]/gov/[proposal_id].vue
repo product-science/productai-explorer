@@ -20,7 +20,12 @@ import { fromBech32, toHex } from '@cosmjs/encoding';
 import { accountToOperatorAddress } from '@/libs/address';
 import { calculateEpochStagesForBlock } from '@/libs/epochCalculator';
 import { packCircles } from '@/libs/chartLayouts';
-import { formatProposalType } from '@/libs/utils';
+import {
+  formatProposalType,
+  proposalHasMultipleMessages,
+  proposalPrimaryMsgType,
+} from '@/libs/utils';
+import { useI18n } from 'vue-i18n';
 import VueApexCharts from 'vue3-apexcharts';
 import { JsonViewer } from 'vue3-json-viewer';
 import { colorVariables } from '@/components/charts/apexChartConfig';
@@ -44,6 +49,7 @@ const dialog = useTxDialog();
 const stakingStore = useStakingStore();
 const chainStore = useBlockchain();
 const validatorStore = useValidatorStore();
+const { t } = useI18n();
 
 const tab = ref('details'); // Default to details to show context first, or 'votes' if user prefers
 
@@ -575,8 +581,16 @@ const total = computed(() => {
 });
 
 const proposalType = computed(() => {
-    return formatProposalType(proposal.value.content?.['@type']);
-})
+    if (proposalHasMultipleMessages(proposal.value)) {
+      return t('gov.multiple_messages');
+    }
+    return formatProposalType(proposalPrimaryMsgType(proposal.value));
+});
+
+const proposalSummaryExcerpt = computed(() => {
+  const p = proposal.value;
+  return p?.summary || p?.content?.description || metaItem(p?.metadata)?.summary || '';
+});
 
 const voteDetails = computed(() => {
   const tally = (proposal.value.final_tally_result as Tally) || localTally.value || {
@@ -1006,7 +1020,7 @@ const currentMessage = computed(() => {
     <div class="bg-base-100 rounded-lg shadow p-3 mb-4 relative">
        <!-- Top Row: Badge -->
        <div class="mb-4">
-           <span class="badge badge-primary bg-opacity-20 text-primary border-none px-3 py-3 text-xs font-semibold uppercase tracking-wide">
+           <span class="badge badge-primary bg-opacity-20 text-primary border-none px-3 py-2 rounded-full text-xs font-semibold uppercase tracking-wide">
                {{ proposalType }}
            </span>
        </div>
@@ -1015,6 +1029,10 @@ const currentMessage = computed(() => {
        <h1 class="text-2xl font-bold mb-2 pr-32">
            #{{ proposal_id }}. {{ proposal.title || proposal.content?.title || metaItem(proposal?.metadata)?.title  }}
        </h1>
+
+       <p v-if="proposalSummaryExcerpt" class="text-sm text-base-content/60 line-clamp-2 mb-4 max-w-4xl">
+         {{ proposalSummaryExcerpt }}
+       </p>
 
        <!-- Voting Time -->
        <div class="text-sm text-base-content/60 mb-6">
@@ -1304,23 +1322,25 @@ const currentMessage = computed(() => {
     </div>
 
     <!-- Tab Content: Details -->
-    <div v-if="tab === 'details'" class="bg-base-100 rounded-lg shadow p-6">
-         <!-- Pagination for multiple messages -->
-         <div v-if="proposalMessages.length > 1" class="mb-4">
-            <PaginationBar 
-                :total="String(proposalMessages.length)" 
-                :limit="1" 
+    <template v-if="tab === 'details'">
+        <!-- Pagination for multiple messages — sits above the card -->
+        <div v-if="proposalMessages.length > 1" class="mb-4">
+            <div class="text-center text-xs text-base-content/60 uppercase tracking-widest mb-2">
+                Message {{ messagePage }} of {{ proposalMessages.length }}
+            </div>
+            <PaginationBar
+                :total="String(proposalMessages.length)"
+                :limit="1"
                 :callback="(p: number) => messagePage = p"
                 :page="messagePage"
                 :maxVisible="5"
             />
-             <div class="text-center text-xs text-base-content/60 uppercase tracking-widest mb-4">
-                 Message {{ messagePage }} of {{ proposalMessages.length }}
-             </div>
-         </div>
+        </div>
 
-         <ObjectElement :value="currentMessage" />
-    </div>
+        <div class="bg-base-100 rounded-lg shadow p-6">
+            <ObjectElement :value="currentMessage" />
+        </div>
+    </template>
 
     <!-- Tab Content: JSON -->
     <div v-if="tab === 'json'" class="bg-base-100 rounded-lg shadow p-6">

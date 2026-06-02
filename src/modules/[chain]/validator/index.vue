@@ -18,6 +18,7 @@ import type { SigningInfo } from '@/types';
 import { consensusPubkeyToHexAddress, valconsToBase64 } from '@/libs';
 import CardStatisticsVertical from '@/components/CardStatisticsVertical.vue';
 import ValidatorListSkeleton from '@/components/ValidatorListSkeleton.vue';
+import ValidatorProposalsWidget from '@/components/ValidatorProposalsWidget.vue';
 import { useWindowSize } from '@vueuse/core';
 
 
@@ -488,6 +489,8 @@ base.$subscribe((_, s) => {
       :hint="$t('validator.hints.validators')"
     />
   </div>
+
+  <ValidatorProposalsWidget />
 
   <!-- Epoch selector (top) using PaginationBar -->
   <div class="flex items-center justify-center mt-4 mb-2">

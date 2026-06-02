@@ -12,7 +12,6 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 export default defineConfig({
     base: '/dashboard',
     define: {
-        global: 'window',
         'process.env': {},
     },
     plugins: [
@@ -57,7 +56,7 @@ export default defineConfig({
         }),
         VueI18nPlugin({
             runtimeOnly: true,
-            compositionOnly: true,
+            compositionOnly: false,
             include: [
                 fileURLToPath(
                     new URL('./src/plugins/i18n/locales/**', import.meta.url)
@@ -73,7 +72,13 @@ export default defineConfig({
         },
     },
     optimizeDeps: {
-        include: ['buffer'],
+        include: [
+            'buffer',
+            'vite-plugin-node-polyfills/shims/buffer',
+            'vite-plugin-node-polyfills/shims/global',
+            'vite-plugin-node-polyfills/shims/process',
+            'lazy-load-vue3',
+        ],
         entries: ['./src/**/*.vue'],
     },
     server: {

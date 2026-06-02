@@ -132,7 +132,7 @@ function openConnectWallet() {
   <Teleport to="body">
     <ConnectWallet 
       ref="connectWalletRef"
-      :chain-id="baseStore.currentChainId || 'cosmoshub-4'" 
+      :chain-id="chainStore.current?.chainId || baseStore.currentChainId || chainStore.chainName || 'gonka'" 
       :hd-path="chainStore.defaultHDPath"
       :addr-prefix="chainStore.current?.bech32Prefix || 'cosmos'" 
       @connect="walletStateChange"
