@@ -343,13 +343,13 @@ onMounted(async () => {
                 :style="{ width: `${Math.min(100, Math.max(0, participationPercent(item)))}%` }"
               />
             </div>
-            <button
-              type="button"
-              class="btn btn-primary btn-sm shrink-0 rounded-lg font-semibold normal-case"
+            <label
+              for="vote"
+              class="btn btn-primary btn-sm shrink-0 rounded-lg font-semibold normal-case cursor-pointer"
               @click="dialog.open('vote', { proposal_id: item.proposal_id })"
             >
               {{ $t('gov.btn_vote') }}
-            </button>
+            </label>
           </div>
           <div v-else class="sm:block"></div>
 

@@ -6,6 +6,7 @@ import { useBridgeUnwrap, checkBridgeEpochStatus, ensureEpochOnBridge } from '@/
 import type { UnwrapParams, BridgeEpochStatus } from '@/composables/useBridgeUnwrap';
 import { get, post } from '@/libs/http';
 import { toBech32 } from '@cosmjs/encoding';
+import { ethers } from 'ethers';
 
 // Key derivation mismatch states
 const isAddressMismatch = ref(false);
@@ -41,6 +42,8 @@ const calculating = ref(false);
 const error = ref<string>('');
 const txError = ref<string>('');
 const calculationTimeout = ref<number | null>(null);
+const approximateFee = ref<string>('~0.005 ETH');
+const feeLoading = ref(false);
 
 // Form data
 const swapAmount = ref<string>('');
@@ -604,6 +607,114 @@ async function queryEvmRpc(to: string, data: string): Promise<string> {
   return '0x';
 }
 
+async function requestEvmRpc(method: string, params: any[]): Promise<any> {
+  const activeCosmosChain = baseStore.currentChainId || blockchain.current?.chainId || '';
+  const cosmosIsTestnet = activeCosmosChain.includes('testnet');
+  const rpcList = cosmosIsTestnet ? SEPOLIA_RPCS : MAINNET_RPCS;
+
+  for (const evmRpcUrl of rpcList) {
+    try {
+      const json = await post(evmRpcUrl, {
+        jsonrpc: '2.0',
+        method,
+        params,
+        id: 1
+      });
+      if (json && !json.error) {
+        return json.result;
+      }
+    } catch (e) {
+      console.warn(`[requestEvmRpc] RPC ${evmRpcUrl} failed for method ${method}:`, e);
+    }
+  }
+  return null;
+}
+
+async function fetchApproximateFee() {
+  if (!isConnected.value) {
+    approximateFee.value = '';
+    return;
+  }
+
+  const isDeposit = activeTab.value === 'deposit';
+  const token = isDeposit ? selectedDepositToken.value : selectedWithdrawToken.value;
+
+  if (!token) {
+    approximateFee.value = '';
+    return;
+  }
+
+  const isEth = isDeposit ? (token.type === 'eth') : (!token.isNative);
+  if (!isEth) {
+    approximateFee.value = '';
+    return;
+  }
+
+  feeLoading.value = true;
+
+  try {
+    const gasPriceHex = await requestEvmRpc('eth_gasPrice', []);
+    if (!gasPriceHex) {
+      approximateFee.value = '~0.005 ETH';
+      return;
+    }
+    const gasPrice = BigInt(gasPriceHex);
+
+    let gasLimit = isDeposit ? 100_000n : 250_000n;
+
+    try {
+      let estimateHex: string | null = null;
+      if (isDeposit) {
+        const contractHash = token.contractAddress;
+        const bridgeResp = await blockchain.getBridgeAddresses(token.chainId);
+        let bridgeContractAddress = bridgeResp?.bridge_address || bridgeResp?.address || bridgeResp?.approved_bridge_address;
+        if (!bridgeContractAddress && bridgeResp?.addresses?.length > 0) {
+          bridgeContractAddress = bridgeResp.addresses[0].address;
+        }
+
+        if (bridgeContractAddress && contractHash) {
+          const methodId = '0xa9059cbb';
+          const toPadding = String(bridgeContractAddress).replace(/^0x/i, '').padStart(64, '0');
+          const amountVal = parseFloat(depositAmount.value) || 1.0;
+          const decimals = token.decimals || 6;
+          const amountInBaseUnits = Math.floor(amountVal * Math.pow(10, decimals));
+          const amountHex = amountInBaseUnits.toString(16).padStart(64, '0');
+          const data = methodId + toPadding + amountHex;
+
+          estimateHex = await requestEvmRpc('eth_estimateGas', [{
+            to: contractHash,
+            data: data
+          }]);
+        }
+      }
+
+      if (estimateHex) {
+        gasLimit = BigInt(estimateHex);
+      }
+    } catch (estError) {
+      console.warn('[Fee Estimation] estimateGas failed, using standard fallback limit:', estError);
+    }
+
+    const totalFeeWei = gasLimit * gasPrice;
+    const divisor = 10n ** 14n;
+    const feeInEthTenThousandths = totalFeeWei / divisor;
+    const feeInEth = Number(feeInEthTenThousandths) / 10000;
+    
+    if (feeInEth < 0.0001) {
+      const divisorSix = 10n ** 12n;
+      const feeInEthMillionths = totalFeeWei / divisorSix;
+      approximateFee.value = `~${(Number(feeInEthMillionths) / 1000000).toFixed(6)} ETH`;
+    } else {
+      approximateFee.value = `~${feeInEth.toFixed(4)} ETH`;
+    }
+  } catch (err) {
+    console.warn('[Fee Estimation] Failed to calculate dynamic fee:', err);
+    approximateFee.value = '~0.005 ETH';
+  } finally {
+    feeLoading.value = false;
+  }
+}
+
 async function loadSupportedDepositTokens() {
   if (!blockchain.endpoint?.address) return;
   try {
@@ -819,19 +930,40 @@ async function fetchDepositTokenBalance() {
           if (walletProvider && activeCosmosChain && token.type === 'eth') {
             try {
               const key = await walletProvider.getKey(activeCosmosChain);
-              const ethHex = key.ethereumHexAddress;
-              if (ethHex && from.toLowerCase() !== ethHex.toLowerCase()) {
-                isAddressMismatch.value = true;
-                expectedEthAddress.value = ethHex;
+              
+              // Derive the REAL Ethereum address from the Cosmos public key
+              // using keccak256 (standard Ethereum derivation).
+              // NOTE: getKey().ethereumHexAddress is NOT the real ETH address —
+              // it's just the Cosmos address bytes (sha256+ripemd160) in hex,
+              // which differs from the keccak256-derived ETH address.
+              const pubKeyBytes = key.pubKey;
+              if (pubKeyBytes && pubKeyBytes.length > 0) {
+                const pubKeyHex = '0x' + Array.from(pubKeyBytes as Uint8Array, (b) => (b as number).toString(16).padStart(2, '0')).join('');
+                const derivedEthAddress = ethers.computeAddress(pubKeyHex);
                 
-                // Decode active EVM hex address and Bech32 encode with current prefix
-                const rawHex = from.startsWith('0x') ? from.substring(2) : from;
-                const hexBytes = new Uint8Array(
-                  rawHex.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || []
-                );
+                console.log('[Key Verification] Cosmos pubKey derived ETH address:', derivedEthAddress);
+                console.log('[Key Verification] EVM Provider address (eth_requestAccounts):', from);
+                console.log('[Key Verification] Match:', from.toLowerCase() === derivedEthAddress.toLowerCase());
                 
-                const targetPrefix = blockchain.current?.bech32Prefix || 'gonka';
-                derivedCosmosAddress.value = toBech32(targetPrefix, hexBytes);
+                if (from.toLowerCase() !== derivedEthAddress.toLowerCase()) {
+                  // Different keys: the EVM account's private key ≠ Cosmos account's private key.
+                  // This means mnemonic derivation paths produced different keys per chain.
+                  // Bridge-minted tokens would go to a Cosmos address the user doesn't control.
+                  isAddressMismatch.value = true;
+                  expectedEthAddress.value = derivedEthAddress;
+                  
+                  // Decode active EVM hex address and Bech32 encode with current prefix
+                  const rawHex = from.startsWith('0x') ? from.substring(2) : from;
+                  const hexBytes = new Uint8Array(
+                    rawHex.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || []
+                  );
+                  
+                  const targetPrefix = blockchain.current?.bech32Prefix || 'gonka';
+                  derivedCosmosAddress.value = toBech32(targetPrefix, hexBytes);
+                } else {
+                  // Same key: private-key account or matching mnemonic — bridge will work correctly
+                  isAddressMismatch.value = false;
+                }
               }
             } catch (keyErr) {
               console.warn('[Key Verification] Could not verify wallet key mismatch:', keyErr);
@@ -1425,6 +1557,7 @@ watch([walletAddress, () => blockchain.endpoint?.address], ([newAddress, newEndp
     walletStore.loadMyAsset(); // Fetch native Cosmos balance immediately on wallet connection!
     loadWrappedTokenBalances();
     fetchDepositTokenBalance();
+    fetchApproximateFee();
     
     // Fallback in case public configurations were not loaded yet
     if (supportedIbcTokens.value.length === 0 && supportedEthTokens.value.length === 0) {
@@ -1452,6 +1585,10 @@ watch(selectedWithdrawToken, (token) => {
   if (token && !token.isNative) {
     loadBridgeEpochStatus();
   }
+});
+
+watch([activeTab, selectedDepositToken, selectedWithdrawToken, depositAmount, withdrawAmount], () => {
+  fetchApproximateFee();
 });
 </script>
 
@@ -1582,7 +1719,7 @@ watch(selectedWithdrawToken, (token) => {
         </div>
 
         <!-- Processing Time / Wallet Status / Server Error -->
-        <div class="flex justify-center mt-2 mb-2 text-center">
+        <div class="flex flex-col items-center justify-center mt-2 mb-2 text-center gap-1.5">
           <div v-if="error" class="text-xs transition-colors duration-300 h-4 flex items-center text-red-500 dark:text-red-400 font-semibold gap-1">
             <Icon icon="mdi:alert-circle-outline" class="inline-block" /> {{ error }}
           </div>
@@ -1591,7 +1728,7 @@ watch(selectedWithdrawToken, (token) => {
           </div>
           <div v-else-if="isAddressMismatch && selectedDepositToken?.type === 'eth'" class="text-xs text-red-500 dark:text-red-400 font-semibold px-4 leading-relaxed flex items-center justify-center gap-1.5">
             <Icon icon="mdi:alert-circle-outline" class="inline-block shrink-0 animate-pulse text-red-500 dark:text-red-400 w-4 h-4" />
-            <span>Your active wallet is mnemonic-derived and doesn't share the same public key between addresses, which is required for this cross-chain transaction. Please switch to a private-key-derived wallet.</span>
+            <span>{{ $t('developer.mnemonic_mismatch_warning') }}</span>
           </div>
           <div v-else class="text-xs transition-colors duration-300 h-4 flex items-center" :class="selectedDepositToken?.type === 'ibc' ? 'text-green-500 dark:text-green-400' : (selectedDepositToken?.type === 'eth' ? 'text-gray-500' : 'opacity-0')">
             <template v-if="selectedDepositToken?.type === 'ibc'">
@@ -1629,6 +1766,12 @@ watch(selectedWithdrawToken, (token) => {
             }}
           </button>
           <div v-if="txError && activeTab === 'deposit'" class="text-xs text-red-500 text-center mt-2 px-2 overflow-hidden text-ellipsis whitespace-nowrap" :title="txError">{{ txError }}</div>
+
+          <!-- Approximate Fee Note under Deposit Button -->
+          <div v-if="isConnected && selectedDepositToken?.type === 'eth' && approximateFee" class="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 mt-2 text-center">
+            <Icon :icon="feeLoading ? 'mdi:loading' : 'mdi:gas-station'" :class="{ 'animate-spin': feeLoading }" class="inline-block mr-0.5" />
+            {{ $t('developer.approximate_fee') }} {{ approximateFee }}
+          </div>
         </div>
       </div>
 
@@ -1683,10 +1826,10 @@ watch(selectedWithdrawToken, (token) => {
 
           <!-- Tx hashes -->
           <div v-if="unwrapProgress.gonkaTxHash" class="mt-2 text-[10px] text-gray-400 truncate">
-            Gonka TX: {{ unwrapProgress.gonkaTxHash }}
+            {{ $t('developer.gonka_tx') }} {{ unwrapProgress.gonkaTxHash }}
           </div>
           <div v-if="unwrapProgress.ethTxHash" class="mt-1 text-[10px] text-gray-400 truncate">
-            ETH TX: {{ unwrapProgress.ethTxHash }}
+            {{ $t('developer.eth_tx') }} {{ unwrapProgress.ethTxHash }}
           </div>
 
           <!-- Reset button after completion/failure -->
@@ -1704,22 +1847,22 @@ watch(selectedWithdrawToken, (token) => {
             <div class="flex items-start gap-2.5">
               <Icon icon="mdi:clock-alert-outline" class="text-primary text-xl shrink-0 mt-0.5 animate-pulse" />
               <div class="flex-1 min-w-0">
-                <div class="text-sm font-semibold text-main">Pending Transaction Detected</div>
+                <div class="text-sm font-semibold text-main">{{ $t('developer.pending_tx_detected') }}</div>
                 <p class="text-xs text-gray-500 mt-0.5">
-                  We found an incomplete bridge transaction in your browser cache.
+                  {{ $t('developer.pending_tx_message') }}
                 </p>
                 <div class="text-[10px] text-gray-400 font-mono mt-1 bg-gray-50 dark:bg-gray-800/50 p-1.5 rounded truncate" :title="pendingUnwrap.gonkaTxHash">
-                  Gonka TX: {{ pendingUnwrap.gonkaTxHash }}
+                  {{ $t('developer.gonka_tx') }} {{ pendingUnwrap.gonkaTxHash }}
                 </div>
               </div>
             </div>
             <div class="flex gap-2">
               <button class="btn btn-primary btn-xs flex-1" @click="handleResumePending" :disabled="calculating">
                 <Icon v-if="calculating" icon="mdi:loading" class="animate-spin mr-1" />
-                Resume Transaction
+                {{ $t('developer.resume_tx') }}
               </button>
               <button class="btn btn-outline btn-xs flex-1" @click="handleClearPending" :disabled="calculating">
-                Discard
+                {{ $t('developer.discard') }}
               </button>
             </div>
           </div>
@@ -1830,10 +1973,10 @@ watch(selectedWithdrawToken, (token) => {
             <div v-else-if="selectedWithdrawToken && !selectedWithdrawToken.isNative && epochStatus && epochStatus.isAdminMode" class="text-xs text-red-500 space-y-1 mb-1 font-semibold">
               <div class="flex items-center justify-center gap-1">
                 <Icon icon="mdi:lock-outline" class="text-red-500 shrink-0 animate-pulse" />
-                Bridge is in Admin Mode
+                {{ $t('developer.bridge_admin_mode') }}
               </div>
               <div class="text-[10px] opacity-80 font-normal">
-                Withdrawals are temporarily blocked. Please wait while the bridge contract is in admin mode.
+                {{ $t('developer.bridge_admin_mode_message') }}
               </div>
             </div>
             
@@ -1844,7 +1987,7 @@ watch(selectedWithdrawToken, (token) => {
                 {{ $t('developer.bridge_epoch_behind') }}
               </div>
               <div>
-                Bridge: Epoch {{ epochStatus.bridgeEpoch }} | Chain: Epoch {{ epochStatus.chainEpoch }} ({{ epochStatus.epochsBehind }} behind)
+                {{ $t('developer.bridge_epoch_info', { bridgeEpoch: epochStatus.bridgeEpoch, chainEpoch: epochStatus.chainEpoch, epochsBehind: epochStatus.epochsBehind }) }}
               </div>
               <div class="opacity-90">
                 {{ $t('developer.bridge_epoch_warning') }}
@@ -1896,13 +2039,13 @@ watch(selectedWithdrawToken, (token) => {
               disabled
             >
               <Icon icon="mdi:lock-outline" class="mr-2" />
-              BRIDGE IN ADMIN MODE
+              {{ $t('developer.bridge_in_admin_mode_btn') }}
             </button>
 
             <!-- Update Bridge button when Ethereum bridge contract is not synced -->
             <button
               v-else-if="selectedWithdrawToken && !selectedWithdrawToken.isNative && epochStatus && !epochStatus.isSynced"
-              class="btn btn-warning w-full text-white"
+              class="btn btn-primary w-full text-white"
               :disabled="epochUpdateLoading"
               @click="updateBridgeEpoch"
             >
@@ -1925,6 +2068,12 @@ watch(selectedWithdrawToken, (token) => {
               }}
             </button>
             <div v-if="txError && activeTab === 'withdraw'" class="text-xs text-red-500 text-center mt-2 px-2 overflow-hidden text-ellipsis whitespace-nowrap" :title="txError">{{ txError }}</div>
+
+            <!-- Approximate Fee Note under Withdraw Button -->
+            <div v-if="isConnected && selectedWithdrawToken && !selectedWithdrawToken.isNative && approximateFee" class="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 mt-2 text-center">
+              <Icon :icon="feeLoading ? 'mdi:loading' : 'mdi:gas-station'" :class="{ 'animate-spin': feeLoading }" class="inline-block mr-0.5" />
+              {{ $t('developer.approximate_fee') }} {{ approximateFee }}
+            </div>
           </div>
         </template>
       </div>

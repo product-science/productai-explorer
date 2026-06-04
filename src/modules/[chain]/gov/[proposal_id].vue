@@ -1057,7 +1057,7 @@ const currentMessage = computed(() => {
                 <div class="text-xs text-base-content/60 mb-1 uppercase tracking-wider">Countdown</div>
                 <Countdown :time="countdownTarget" :short="true" css="text-2xl" />
            </div>
-           <div>
+           <div v-if="proposal.status === 'PROPOSAL_STATUS_VOTING_PERIOD' || quorum > 0">
                <div class="text-xs text-base-content/60 mb-1 uppercase tracking-wider">Turnout / Quorum</div>
                 <div class="text-2xl font-bold text-base-content uppercase flex items-center gap-2">
                     <span v-if="!turnoutLoading">{{ turnout.toFixed(2) }}%</span>

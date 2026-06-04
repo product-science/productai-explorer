@@ -237,7 +237,11 @@ export const useWalletStore = defineStore('walletStore', {
           const connected = JSON.parse(stored);
           // Validate that the stored data has required fields
           if (connected && connected.cosmosAddress && connected.wallet) {
-            this.wallet = connected;
+            // Keep the internal Vue store state lowercase for internal compatibility
+            this.wallet = {
+              ...connected,
+              wallet: connected.wallet.toLowerCase()
+            };
           } else {
             console.warn('Invalid stored wallet data, clearing localStorage');
             localStorage.removeItem(key);
@@ -523,13 +527,35 @@ export const useWalletStore = defineStore('walletStore', {
     },
     async setConnectedWallet(value: WalletConnected) {
       if (value && value.cosmosAddress && value.wallet) {
-        this.wallet = value;
+        // Keep the internal Vue store state lowercase for internal compatibility
+        const internalWalletValue = {
+          ...value,
+          wallet: value.wallet.toLowerCase()
+        };
+        this.wallet = internalWalletValue;
 
-        // Persist to localStorage for consistency
+        // Persist to localStorage with capitalized wallet names for ping-widget compatibility
         const chainStore = useBlockchain();
         const key = chainStore.defaultHDPath;
         if (key) {
-          localStorage.setItem(key, JSON.stringify(value));
+          let capitalizedWallet = value.wallet;
+          const lowerWallet = value.wallet.toLowerCase();
+          if (lowerWallet === 'keplr') {
+            capitalizedWallet = 'Keplr';
+          } else if (lowerWallet === 'leap') {
+            capitalizedWallet = 'Leap';
+          } else if (lowerWallet === 'metamask') {
+            capitalizedWallet = 'Metamask';
+          } else {
+            // Capitalize first letter as fallback
+            capitalizedWallet = value.wallet.charAt(0).toUpperCase() + value.wallet.slice(1);
+          }
+
+          const storageValue = {
+            ...value,
+            wallet: capitalizedWallet
+          };
+          localStorage.setItem(key, JSON.stringify(storageValue));
         }
 
         // Fetch balances and assets immediately on connection

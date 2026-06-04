@@ -16,6 +16,7 @@ export function proposalAdapter(p: any): GovProposal {
   if (p) {
     if (p.messages && p.messages.length >= 1) p.content = p.messages[0].content || p.messages[0]
     p.proposal_id = p.id
+    p.is_expedited = p.expedited
     p.final_tally_result = {
       yes: p.final_tally_result?.yes_count,
       no: p.final_tally_result?.no_count,
