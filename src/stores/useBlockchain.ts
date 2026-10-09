@@ -187,7 +187,9 @@ export const useBlockchain = defineStore('blockchain', {
           //     const { global } = useTheme();
           //     global.current
           // }
-          useWalletStore().$reset();
+          const walletStore = useWalletStore();
+          walletStore.$reset();
+          walletStore.hydrateWallet();
           if (!this.isConsumerChain) {
             await useStakingStore().init();
           }
@@ -205,6 +207,7 @@ export const useBlockchain = defineStore('blockchain', {
           useMintStore().initial();
           useBlockModule().initial();
           useDistributionStore().initial();
+          await walletStore.loadMyAsset();
           this.lastInitializedChain = this.chainName;
           this.lastInitializedEndpoint = currentEndpoint;
         } finally {

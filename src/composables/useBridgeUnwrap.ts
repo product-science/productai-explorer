@@ -1,10 +1,12 @@
 import { ref, computed } from 'vue';
-import { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
-import { GasPrice } from '@cosmjs/stargate';
+import { SigningCosmWasmClient, wasmTypes } from '@cosmjs/cosmwasm-stargate';
+import { calculateFee, GasPrice } from '@cosmjs/stargate';
 import { Registry } from '@cosmjs/proto-signing';
 import { defaultRegistryTypes } from '@cosmjs/stargate';
 import { ethers } from 'ethers';
 import { get } from '@/libs/http';
+import { toHex } from '@cosmjs/encoding';
+import { sha256 } from '@cosmjs/crypto';
 
 export type UnwrapStatus =
   | 'idle'
@@ -40,6 +42,7 @@ interface UnwrapConfig {
   apiBase: string;
   chainId: string;
   ethereumChainIdHex: string;
+  cosmosRestEndpoint?: string;
 }
 
 const BRIDGE_ABI = [
@@ -101,6 +104,7 @@ const MsgRequestBridgeMintType = {
 
 const customRegistry = new Registry([
   ...defaultRegistryTypes,
+  ...wasmTypes,
   ['/inference.inference.MsgRequestBridgeMint', MsgRequestBridgeMintType as any]
 ]);
 
@@ -268,7 +272,29 @@ export function useBridgeUnwrap() {
       if (!keplr) throw new Error('Keplr extension not found. Please install Keplr.');
 
       await keplr.enable(config.chainId);
-      const offlineSigner = keplr.getOfflineSigner(config.chainId);
+      let offlineSigner = keplr.getOfflineSigner(config.chainId);
+
+      // Wrap the signer to ensure standard string accountNumber is used for signDirect compatibility
+      if (offlineSigner && typeof offlineSigner.signDirect === 'function') {
+        offlineSigner = new Proxy(offlineSigner, {
+          get(target, prop, receiver) {
+            if (prop === 'signDirect') {
+              return async (signerAddress: string, signDoc: any) => {
+                const cleanSignDoc = {
+                  ...signDoc,
+                };
+                if (signDoc.accountNumber !== undefined && signDoc.accountNumber !== null) {
+                  cleanSignDoc.accountNumber = signDoc.accountNumber.toString();
+                }
+                return target.signDirect(signerAddress, cleanSignDoc);
+              };
+            }
+            const value = Reflect.get(target, prop, receiver);
+            return typeof value === 'function' ? value.bind(target) : value;
+          }
+        });
+      }
+
       const accounts = await offlineSigner.getAccounts();
       const senderAddress = accounts[0].address;
 
@@ -296,7 +322,7 @@ export function useBridgeUnwrap() {
             destinationBridgeAddress: params.bridgeContractAddress,
           },
         };
-        result = await client.signAndBroadcast(senderAddress, [mintMsg], 'auto', '');
+        result = await signAndBroadcastWithIndexerFallback(client, senderAddress, [mintMsg], 'auto', '');
       } else {
         const withdrawMsg = {
           withdraw: {
@@ -305,18 +331,34 @@ export function useBridgeUnwrap() {
             destination_address: params.destinationEthAddress,
           },
         };
-        result = await client.execute(
-          senderAddress,
-          params.cw20Address,
-          withdrawMsg,
-          'auto',
-          '',
-          []
-        );
+        const executeMsg = {
+          typeUrl: '/cosmwasm.wasm.v1.MsgExecuteContract',
+          value: {
+            sender: senderAddress,
+            contract: params.cw20Address,
+            msg: new TextEncoder().encode(JSON.stringify(withdrawMsg)),
+            funds: [],
+          },
+        };
+        result = await signAndBroadcastWithIndexerFallback(client, senderAddress, [executeMsg], 'auto', '');
       }
 
-      const { requestId, epochId } = parseUnwrapEvents(result);
       const gonkaTxHash = result.transactionHash;
+      let requestId = '';
+      let epochId = 0;
+
+      if (result.events) {
+        const events = parseUnwrapEvents(result);
+        requestId = events.requestId;
+        epochId = events.epochId;
+      } else {
+        // Fallback: lookup from state queries (indexer disabled)
+        console.warn('Events not available in result. Attempting fallback lookup from state...');
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Wait for block commitment
+        const resolved = await resolveRequestFromHistory(config.cosmosRestEndpoint || config.apiBase, params.destinationEthAddress, params.amount);
+        requestId = resolved.requestId;
+        epochId = resolved.epochId;
+      }
 
       persistPending({ gonkaTxHash, requestId, epochId, params });
 
@@ -684,4 +726,201 @@ function toBytes32Hex(requestId: string): string {
   const encoder = new TextEncoder();
   const data = encoder.encode(requestId);
   return ethers.keccak256(data);
+}
+
+async function resolveRequestFromHistory(
+  cosmosRestEndpoint: string,
+  recipientEthAddress: string,
+  amount: string
+): Promise<{ requestId: string; epochId: number }> {
+  const recipientHex = recipientEthAddress.toLowerCase().replace(/^0x/, '');
+  const bytes = new Uint8Array(recipientHex.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(recipientHex.substr(i * 2, 2), 16);
+  }
+  const recipientB64 = btoa(String.fromCharCode(...Array.from(bytes)));
+
+  // Fetch the signing history from the REST API
+  const res = await get(`${cosmosRestEndpoint}/productscience/inference/bls/signing_history?pagination.limit=100&pagination.reverse=true`);
+  const requests = res.signing_requests || [];
+
+  // Filter requests that contain the recipient base64 in data
+  const matches = requests.filter((r: any) => {
+    return r.data && r.data.some((d: string) => d === recipientB64);
+  });
+
+  if (matches.length === 0) {
+    throw new Error('Could not find the bridge request in signing history. Please try again.');
+  }
+
+  // Sort by created_block_height descending
+  matches.sort((a: any, b: any) => {
+    const heightA = parseInt(a.created_block_height || '0', 10);
+    const heightB = parseInt(b.created_block_height || '0', 10);
+    return heightB - heightA;
+  });
+
+  const matched = matches[0];
+  
+  // Convert request_id base64 to hex
+  const reqIdBytes = Uint8Array.from(atob(matched.request_id), c => c.charCodeAt(0));
+  const reqIdHex = Array.from(reqIdBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+  return {
+    requestId: reqIdHex,
+    epochId: parseInt(matched.current_epoch_id, 10),
+  };
+}
+
+async function signAndBroadcastWithIndexerFallback(
+  client: SigningCosmWasmClient,
+  senderAddress: string,
+  messages: readonly any[],
+  fee: any,
+  memo = ""
+): Promise<{ transactionHash: string; events?: readonly any[]; rawLog?: string }> {
+  const resolvedFee = await resolveFeeForManualBroadcast(client, senderAddress, messages, fee, memo);
+  const txRaw = await client.sign(senderAddress, messages, resolvedFee, memo);
+  const { TxRaw } = await import('cosmjs-types/cosmos/tx/v1beta1/tx');
+  const txBytes = TxRaw.encode(txRaw).finish();
+  const txHash = toHex(sha256(txBytes)).toUpperCase();
+
+  try {
+    const result = await client.broadcastTx(txBytes);
+    return result;
+  } catch (broadcastError: any) {
+    const errMsg = String(broadcastError?.message || broadcastError);
+    if (errMsg.includes('transaction indexing is disabled')) {
+      console.warn('Transaction indexing is disabled on this RPC node. Returning fallback broadcast result:', txHash);
+      return {
+        transactionHash: txHash,
+        rawLog: 'Broadcasted successfully (indexer disabled)'
+      };
+    }
+    throw broadcastError;
+  }
+}
+
+async function resolveFeeForManualBroadcast(
+  client: SigningCosmWasmClient,
+  senderAddress: string,
+  messages: readonly any[],
+  fee: any,
+  memo: string
+) {
+  if (fee !== 'auto' && typeof fee !== 'number') {
+    return fee;
+  }
+
+  const internalFeeResolver = (client as any).calculateFeeForTransaction;
+  if (typeof internalFeeResolver === 'function') {
+    return internalFeeResolver.call(client, senderAddress, messages, memo, fee);
+  }
+
+  const gasEstimation = await client.simulate(senderAddress, messages, memo);
+  const multiplier = typeof fee === 'number' ? fee : 1.4;
+  const gasLimit = Math.ceil(gasEstimation * multiplier);
+  const gasPrice = (client as any).gasPrice;
+
+  if (!gasPrice) {
+    throw new Error('Gas price must be set in the client options when auto gas is used.');
+  }
+
+  return calculateFee(gasLimit, gasPrice);
+}
+
+export async function scanForUncompletedTransaction(
+  cosmosRestEndpoint: string,
+  recipientEthAddress: string,
+  bridgeContractAddress: string,
+  withdrawableTokens: any[]
+): Promise<{ gonkaTxHash: string; requestId: string; epochId: number; params: UnwrapParams } | null> {
+  try {
+    const recipientHex = recipientEthAddress.toLowerCase().replace(/^0x/, '');
+    const bytes = new Uint8Array(recipientHex.length / 2);
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] = parseInt(recipientHex.substr(i * 2, 2), 16);
+    }
+    const recipientB64 = btoa(String.fromCharCode(...Array.from(bytes)));
+
+    // Fetch history
+    const res = await get(`${cosmosRestEndpoint}/productscience/inference/bls/signing_history?pagination.limit=100&pagination.reverse=true`);
+    const requests = res.signing_requests || [];
+
+    // Filter requests matching recipient base64
+    const matches = requests.filter((r: any) => {
+      return r.data && r.data.some((d: string) => d === recipientB64);
+    });
+
+    if (matches.length === 0) return null;
+
+    // Check if any match is NOT completed on Ethereum yet
+    const keplr = (window as any).keplr;
+    if (!keplr?.ethereum) return null;
+
+    const provider = new ethers.BrowserProvider(keplr.ethereum);
+    // We only connect as a read-only provider (no switch chain needed to query)
+    const abi = [
+      'function isRequestProcessed(uint64 epochId, bytes32 requestId) view returns (bool)'
+    ];
+
+    for (const matched of matches) {
+      const epochId = parseInt(matched.current_epoch_id, 10);
+      
+      // Convert request_id base64 to hex
+      const reqIdBytes = Uint8Array.from(atob(matched.request_id), c => c.charCodeAt(0));
+      const reqIdHex = '0x' + Array.from(reqIdBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+
+      try {
+        const contract = new ethers.Contract(bridgeContractAddress, abi, provider);
+        const processed = await contract.isRequestProcessed(epochId, reqIdHex);
+        
+        if (!processed) {
+          // Found an unprocessed transaction! Reconstruct metadata.
+          const isGnk = matched.data.length === 5; // mint has 5 fields, withdraw has 6 fields
+
+          // Decode amount
+          const amtBytes = Uint8Array.from(atob(matched.data[matched.data.length - 1]), c => c.charCodeAt(0));
+          const amtHex = Array.from(amtBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+          const amount = BigInt('0x' + amtHex).toString();
+
+          let tokenContractOnEth = '';
+          let cw20Address = '';
+
+          if (!isGnk && matched.data[4]) {
+            const tokenBytes = Uint8Array.from(atob(matched.data[4]), c => c.charCodeAt(0));
+            tokenContractOnEth = '0x' + Array.from(tokenBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+            
+            // Match to withdrawable tokens
+            const matchToken = withdrawableTokens.find(t => 
+              t.token_info?.contractAddress?.toLowerCase() === tokenContractOnEth.toLowerCase()
+            );
+            if (matchToken) {
+              cw20Address = matchToken.contractAddress || '';
+            }
+          }
+
+          return {
+            gonkaTxHash: reqIdHex, // Use request ID as placeholder for tx hash
+            requestId: reqIdHex.replace(/^0x/, ''),
+            epochId,
+            params: {
+              cw20Address,
+              amount,
+              destinationEthAddress: recipientEthAddress,
+              bridgeContractAddress,
+              tokenContractOnEth,
+              isGnk
+            }
+          };
+        }
+      } catch (err) {
+        console.error('Error checking isRequestProcessed on bridge contract:', err);
+      }
+    }
+    return null;
+  } catch (e) {
+    console.error('Error during auto-scan:', e);
+    return null;
+  }
 }

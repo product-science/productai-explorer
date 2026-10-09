@@ -1,7 +1,8 @@
 import { defineStore } from 'pinia';
 import { useBlockchain } from './useBlockchain';
 import { useBaseStore } from './useBaseStore';
-import { fromBech32, toBech32, toUtf8 } from '@cosmjs/encoding';
+import { fromBech32, toBech32, toUtf8, toHex } from '@cosmjs/encoding';
+import { sha256 } from '@cosmjs/crypto';
 import type { MsgExecuteContractEncodeObject } from '@cosmjs/cosmwasm-stargate';
 import type { Account as StargateAccount, SigningStargateClient as SigningStargateClientType } from '@cosmjs/stargate';
 import type { EncodeObject } from '@cosmjs/proto-signing';
@@ -16,11 +17,99 @@ import type {
   WalletConnected,
 } from '@/types';
 import { useStakingStore } from './useStakingStore';
-import { ConfigSource } from './useDashboard';
+import { ConfigSource, useDashboard } from './useDashboard';
 import router from '@/router'
 
 const ibcRpcCache: Record<string, { url: string; timestamp: number }> = {};
 const CACHE_TTL = 1000 * 60 * 60; // 1 hour
+
+const TESTNET_CHAIN_JSON_BASE = 'https://raw.githubusercontent.com/cosmos/chain-registry/master/testnets';
+const TESTNET_FOLDER_ALIASES: Record<string, string[]> = {
+  osmo: ['osmosistestnet', 'osmosistestnet4'],
+  osmosis: ['osmosistestnet', 'osmosistestnet4'],
+  cosmos: ['cosmoshubtestnet'],
+  cosmoshub: ['cosmoshubtestnet'],
+  theta: ['cosmoshubtestnet'],
+  pion: ['neutrontestnet'],
+  neutron: ['neutrontestnet'],
+  atlantic: ['seitestnet'],
+  sei: ['seitestnet'],
+};
+
+let testnetListingCache: { timestamp: number; folders: string[] } | null = null;
+
+function testnetRegistryFolderCandidates(chainId: string): string[] {
+  const lower = chainId.toLowerCase();
+  const first = lower.split(/[-_]/)[0];
+  return [...new Set([
+    ...(TESTNET_FOLDER_ALIASES[first] || []),
+    `${first}testnet`,
+    `${first}testnet1`,
+    `${first}devnet`,
+    lower,
+  ])];
+}
+
+async function listTestnetRegistryFolders(): Promise<string[]> {
+  if (testnetListingCache && Date.now() - testnetListingCache.timestamp < CACHE_TTL) {
+    return testnetListingCache.folders;
+  }
+
+  const res = await fetch(ConfigSource.TestnetCosmosDirectory);
+  if (!res.ok) return testnetListingCache?.folders || [];
+
+  const listing = await res.json();
+  const folders = (Array.isArray(listing) ? listing : [])
+    .filter((entry: any) => entry?.type === 'dir' && typeof entry.name === 'string' && !entry.name.startsWith('_'))
+    .map((entry: any) => entry.name as string);
+
+  testnetListingCache = { timestamp: Date.now(), folders };
+  return folders;
+}
+
+async function fetchTestnetRpcsFromChainRegistry(chainId: string): Promise<string[]> {
+  const candidates = testnetRegistryFolderCandidates(chainId);
+  let folders = candidates;
+
+  try {
+    const available = new Set(await listTestnetRegistryFolders());
+    if (available.size > 0) {
+      folders = candidates.filter((name) => available.has(name));
+      if (folders.length === 0) {
+        const first = chainId.toLowerCase().split(/[-_]/)[0];
+        folders = [...available].filter((name) => name.toLowerCase().startsWith(first));
+      }
+    }
+  } catch {
+    // Fall back to candidate folder names against raw chain.json URLs.
+  }
+
+  for (const folder of folders) {
+    try {
+      const res = await fetch(`${TESTNET_CHAIN_JSON_BASE}/${folder}/chain.json`);
+      if (!res.ok) continue;
+      const chain = await res.json();
+      if (chain?.chain_id !== chainId) continue;
+      return (chain.apis?.rpc || [])
+        .map((endpoint: any) => endpoint?.address || endpoint)
+        .filter(Boolean);
+    } catch {
+      continue;
+    }
+  }
+  return [];
+}
+
+function findLocalChainConfig(sourceChainId: string) {
+  const dashboardStore = useDashboard();
+  return Object.values(dashboardStore.chains).find(
+    (c) =>
+      c.chainId === sourceChainId ||
+      c.chainName === sourceChainId ||
+      (c.chainName && sourceChainId.toLowerCase().includes(c.chainName.toLowerCase())) ||
+      (c.chainId && sourceChainId.toLowerCase().includes(c.chainId.toLowerCase()))
+  );
+}
 
 const ETH_ACCOUNT_TYPE_URLS = new Set([
   '/injective.types.v1beta1.EthAccount',
@@ -116,6 +205,14 @@ function feeAmountFromGasPrice(gasLimit: string, gasPrice: string | number): str
   return ((gas * atomics + scale - 1n) / scale).toString();
 }
 
+function cleanRpcConnectError(error: any): string {
+  const message = error instanceof Error ? error.message : String(error || '');
+  if (message.includes('Value must not be undefined')) {
+    return 'source-chain RPC returned an invalid Tendermint response';
+  }
+  return message || 'unknown RPC connection error';
+}
+
 // TypeScript declarations for wallet objects
 declare global {
   interface Window {
@@ -145,6 +242,9 @@ declare global {
   }
 }
 
+let activeLoadAssetsPromise: Promise<void> | null = null;
+let activeLoadAssetsAddress = '';
+
 export const useWalletStore = defineStore('walletStore', {
   state: () => {
     return {
@@ -168,16 +268,19 @@ export const useWalletStore = defineStore('walletStore', {
     },
     balanceOfStakingToken(): Coin {
       const stakingStore = useStakingStore();
+      const blockchainStore = useBlockchain();
+      const denom = stakingStore.params.bond_denom || blockchainStore.current?.assets?.[0]?.base || 'ngonka';
       return (
         this.balances.find(
-          (x) => x.denom === stakingStore.params.bond_denom
-        ) || { amount: '0', denom: stakingStore.params.bond_denom }
+          (x) => x.denom === denom
+        ) || { amount: '0', denom }
       );
     },
     stakingAmount() {
       const stakingStore = useStakingStore();
+      const blockchainStore = useBlockchain();
       let amt = 0;
-      let denom = stakingStore.params.bond_denom;
+      let denom = stakingStore.params.bond_denom || blockchainStore.current?.assets?.[0]?.base || 'ngonka';
       this.delegations.forEach((i) => {
         amt += Number(i.balance.amount);
         denom = i.balance.denom;
@@ -186,11 +289,13 @@ export const useWalletStore = defineStore('walletStore', {
     },
     rewardAmount() {
       const stakingStore = useStakingStore();
+      const blockchainStore = useBlockchain();
+      const denom = stakingStore.params.bond_denom || blockchainStore.current?.assets?.[0]?.base || 'ngonka';
       // @ts-ignore
       const reward = this.rewards.total?.find(
-        (x: Coin) => x.denom === stakingStore.params.bond_denom
+        (x: Coin) => x.denom === denom
       );
-      return reward || { amount: '0', denom: stakingStore.params.bond_denom };
+      return reward || { amount: '0', denom };
     },
     unbondingAmount() {
       let amt = 0;
@@ -201,7 +306,9 @@ export const useWalletStore = defineStore('walletStore', {
       });
 
       const stakingStore = useStakingStore();
-      return { amount: String(amt), denom: stakingStore.params.bond_denom };
+      const blockchainStore = useBlockchain();
+      const denom = stakingStore.params.bond_denom || blockchainStore.current?.assets?.[0]?.base || 'ngonka';
+      return { amount: String(amt), denom };
     },
     currentAddress() {
       if (!this.connectedWallet?.cosmosAddress) return '';
@@ -260,25 +367,41 @@ export const useWalletStore = defineStore('walletStore', {
     async loadMyAsset() {
       const address = this.currentAddress;
       if (!address) return;
+      if (!this.blockchain.rpc) return;
 
-      try {
-        const [bankRes, delRes, unbRes, rewRes] = await Promise.allSettled([
-          this.blockchain.rpc.getBankBalances(address),
-          this.blockchain.rpc.getStakingDelegations(address),
-          this.blockchain.rpc.getStakingDelegatorUnbonding(address),
-          this.blockchain.rpc.getDistributionDelegatorRewards(address)
-        ]);
-
-        // Guard against stale overwrites if the wallet changes mid-flight
-        if (address !== this.currentAddress) return;
-
-        if (bankRes.status === 'fulfilled') this.balances = bankRes.value.balances || [];
-        if (delRes.status === 'fulfilled') this.delegations = delRes.value.delegation_responses || [];
-        if (unbRes.status === 'fulfilled') this.unbonding = unbRes.value.unbonding_responses || [];
-        if (rewRes.status === 'fulfilled') this.rewards = rewRes.value || { total: [], rewards: [] };
-      } catch (error) {
-        console.error('Error loading assets:', error);
+      if (activeLoadAssetsPromise && activeLoadAssetsAddress === address) {
+        return activeLoadAssetsPromise;
       }
+
+      activeLoadAssetsAddress = address;
+      activeLoadAssetsPromise = (async () => {
+        try {
+          const stakingStore = useStakingStore();
+          const [bankRes, delRes, rewRes] = await Promise.allSettled([
+            this.blockchain.rpc.getBankBalances(address),
+            this.blockchain.rpc.getStakingDelegations(address),
+            this.blockchain.rpc.getDistributionDelegatorRewards(address),
+            stakingStore.params?.bond_denom ? Promise.resolve() : stakingStore.fetchParams()
+          ]);
+
+          // Guard against stale overwrites if the wallet changes mid-flight
+          if (address !== this.currentAddress) return;
+
+          if (bankRes.status === 'fulfilled') this.balances = bankRes.value.balances || [];
+          if (delRes.status === 'fulfilled') this.delegations = delRes.value.delegation_responses || [];
+          this.unbonding = [];
+          if (rewRes.status === 'fulfilled') this.rewards = rewRes.value || { total: [], rewards: [] };
+        } catch (error) {
+          console.error('Error loading assets:', error);
+        } finally {
+          if (activeLoadAssetsAddress === address) {
+            activeLoadAssetsPromise = null;
+            activeLoadAssetsAddress = '';
+          }
+        }
+      })();
+
+      return activeLoadAssetsPromise;
     },
 
     async getWalletPublicKey() {
@@ -346,9 +469,17 @@ export const useWalletStore = defineStore('walletStore', {
     async getStargateSigningClient(rpcEndpoint: string, offlineSigner: any): Promise<SigningStargateClientType> {
       if (!rpcEndpoint) throw new Error('No RPC endpoint available');
 
-      const [{ SigningStargateClient, accountFromAny }] = await Promise.all([
-        import('@cosmjs/stargate')
+      const [
+        { SigningStargateClient, accountFromAny, defaultRegistryTypes },
+        { Registry },
+        { wasmTypes }
+      ] = await Promise.all([
+        import('@cosmjs/stargate'),
+        import('@cosmjs/proto-signing'),
+        import('@cosmjs/cosmwasm-stargate')
       ]);
+
+      const registry = new Registry([...defaultRegistryTypes, ...wasmTypes] as any);
 
       const accountParser = (anyAccount: Any): StargateAccount => {
         if (ETH_ACCOUNT_TYPE_URLS.has(anyAccount.typeUrl)) {
@@ -361,6 +492,7 @@ export const useWalletStore = defineStore('walletStore', {
         return await Promise.race<SigningStargateClientType>([
           SigningStargateClient.connectWithSigner(rpcEndpoint, offlineSigner, {
             accountParser,
+            registry: registry as any,
           }),
           new Promise<SigningStargateClientType>((_, reject) =>
             setTimeout(() => reject(new Error('RPC connection timeout')), 10000)
@@ -385,6 +517,54 @@ export const useWalletStore = defineStore('walletStore', {
       if (typeof offlineSigner?.signDirect !== 'function') {
         throw new Error('Connected wallet does not support signDirect for Injective transactions');
       }
+
+      const self = this;
+      offlineSigner = new Proxy(offlineSigner, {
+        get(target, prop, receiver) {
+          if (prop === 'signDirect') {
+            return async (signerAddress: string, signDoc: any) => {
+              console.log('Intercepted signDirect via Proxy for Injective:', {
+                signerAddress,
+                signDoc: {
+                  ...signDoc,
+                  accountNumber: signDoc.accountNumber?.toString(),
+                }
+              });
+
+              let accountNumber = signDoc.accountNumber;
+              if (accountNumber === undefined || accountNumber === null) {
+                console.warn('signDirect wrapper: signDoc.accountNumber is undefined/null, querying sequence...');
+                try {
+                  const client = await self.getStargateSigningClient(rpcEndpoint, receiver);
+                  try {
+                    const seq = await client.getSequence(signerAddress);
+                    accountNumber = seq?.accountNumber;
+                  } finally {
+                    client.disconnect();
+                  }
+                } catch (e) {
+                  console.error('Failed to query sequence in signDirect wrapper for Injective:', e);
+                }
+              }
+
+              if (accountNumber === undefined || accountNumber === null) {
+                throw new Error('Account number is undefined/null. Cannot sign Injective transaction.');
+              }
+
+              const cleanSignDoc = {
+                bodyBytes: signDoc.bodyBytes,
+                authInfoBytes: signDoc.authInfoBytes,
+                chainId: signDoc.chainId,
+                accountNumber: accountNumber.toString() as any,
+              };
+
+              return target.signDirect(signerAddress, cleanSignDoc);
+            };
+          }
+          const value = Reflect.get(target, prop, receiver);
+          return typeof value === 'function' ? value.bind(target) : value;
+        }
+      });
 
       const [
         { makeAuthInfoBytes, makeSignDoc },
@@ -444,13 +624,30 @@ export const useWalletStore = defineStore('walletStore', {
         });
 
         const txBytes = TxRaw.encode(txRaw).finish();
+        const txHash = toHex(sha256(txBytes)).toUpperCase();
 
-        return await Promise.race([
-          signingClient.broadcastTx(txBytes),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('IBC transfer broadcast timeout')), 30000)
-          ),
-        ]);
+        try {
+          return await Promise.race([
+            signingClient.broadcastTx(txBytes),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('IBC transfer broadcast timeout')), 30000)
+            ),
+          ]);
+        } catch (broadcastError: any) {
+          const errMsg = String(broadcastError?.message || broadcastError);
+          if (errMsg.includes('transaction indexing is disabled') && txHash) {
+            console.warn('Transaction indexing is disabled on this RPC node. Returning synthetic success response for Injective:', txHash);
+            return {
+              code: 0,
+              transactionHash: txHash,
+              height: 0,
+              gasUsed: 0,
+              gasWanted: 0,
+              rawLog: 'Broadcasted successfully (indexer disabled)'
+            };
+          }
+          throw broadcastError;
+        }
       } finally {
         signingClient.disconnect();
       }
@@ -1200,6 +1397,19 @@ export const useWalletStore = defineStore('walletStore', {
         throw new Error('No wallet address available');
       }
 
+      const requiredFields = {
+        sourceChainId,
+        sourcePort,
+        sourceChannel,
+        tokenDenom,
+        amount,
+        receiver,
+      };
+      const missingField = Object.entries(requiredFields).find(([, value]) => !value);
+      if (missingField) {
+        throw new Error(`Missing IBC transfer field: ${missingField[0]}`);
+      }
+
       try {
         const walletType = this.connectedWallet?.wallet;
         if (!walletType) {
@@ -1235,6 +1445,57 @@ export const useWalletStore = defineStore('walletStore', {
             throw new Error(`Wallet type "${walletType}" not supported for IBC transfer`);
         }
 
+        // Wrap the signer to ensure standard Long accountNumber is used for signDirect compatibility
+        const self = this;
+        if (offlineSigner && typeof offlineSigner.signDirect === 'function') {
+          offlineSigner = new Proxy(offlineSigner, {
+            get(target, prop, receiver) {
+              if (prop === 'signDirect') {
+                return async (signerAddress: string, signDoc: any) => {
+                  console.log('Intercepted signDirect via Proxy:', {
+                    signerAddress,
+                    signDoc: {
+                      ...signDoc,
+                      accountNumber: signDoc.accountNumber?.toString(),
+                    }
+                  });
+
+                  let accountNumber = signDoc.accountNumber;
+                  if (accountNumber === undefined || accountNumber === null) {
+                    console.warn('signDirect wrapper: signDoc.accountNumber is undefined/null, querying sequence...');
+                    try {
+                      const client = await self.getStargateSigningClient(rpcEndpoint || rpcEndpoints[0], receiver);
+                      try {
+                        const seq = await client.getSequence(signerAddress);
+                        accountNumber = seq?.accountNumber;
+                      } finally {
+                        client.disconnect();
+                      }
+                    } catch (e) {
+                      console.error('Failed to query sequence in signDirect wrapper:', e);
+                    }
+                  }
+
+                  if (accountNumber === undefined || accountNumber === null) {
+                    throw new Error('Account number is undefined/null. Cannot sign transaction.');
+                  }
+
+                  const cleanSignDoc = {
+                    bodyBytes: signDoc.bodyBytes,
+                    authInfoBytes: signDoc.authInfoBytes,
+                    chainId: signDoc.chainId,
+                    accountNumber: accountNumber.toString() as any,
+                  };
+
+                  return target.signDirect(signerAddress, cleanSignDoc);
+                };
+              }
+              const value = Reflect.get(target, prop, receiver);
+              return typeof value === 'function' ? value.bind(target) : value;
+            }
+          });
+        }
+
         const signerAccounts = await offlineSigner.getAccounts();
         if (!signerAccounts.length) {
           throw new Error(`No accounts available in ${walletType} for ${sourceChainId}`);
@@ -1244,69 +1505,88 @@ export const useWalletStore = defineStore('walletStore', {
         }
         senderAddress = signerAccounts[0].address;
 
-        // 2. We need an RPC endpoint for the SOURCE chain.
+        // 2. We need a working RPC endpoint for the SOURCE chain.
         let rpcEndpoint = '';
+        const rpcEndpoints: string[] = [];
+        const addRpcEndpoint = (url: unknown) => {
+          const endpoint = typeof url === 'string' ? url.trim() : '';
+          if (endpoint && !rpcEndpoints.includes(endpoint)) {
+            rpcEndpoints.push(endpoint);
+          }
+        };
+        const addRpcEndpoints = (endpoints: any[]) => {
+          endpoints.forEach((endpoint) => addRpcEndpoint(endpoint?.address || endpoint));
+        };
 
-        // Check memory cache first
+        // Check memory cache first, but verify it before reusing it for signing.
         const cachedRpc = ibcRpcCache[sourceChainId];
         if (cachedRpc && Date.now() - cachedRpc.timestamp < CACHE_TTL) {
-          rpcEndpoint = cachedRpc.url;
+          addRpcEndpoint(cachedRpc.url);
         }
 
-        // Hardcode reliable fallbacks for known testnets to avoid flaky testcosmos directories
-        // When their API is down (502 Bad Gateway), it lacks CORS headers and throws false CORS errors.
-        if (!rpcEndpoint && sourceChainId === 'injective-888') {
-          rpcEndpoint = 'https://testnet.sentry.tm.injective.network:443';
+        const sourceChainConfig = findLocalChainConfig(sourceChainId);
+        if (sourceChainConfig?.endpoints?.rpc) {
+          addRpcEndpoints(sourceChainConfig.endpoints.rpc);
         }
 
-        // If we still don't have an RPC endpoint, query the directories
-        if (!rpcEndpoint) {
-          try {
-            const mainnetResPromise = fetch(ConfigSource.MainnetCosmosDirectory).then(res => res.ok ? res.json() : null);
-            const testnetResPromise = fetch(ConfigSource.TestnetCosmosDirectory).then(res => res.ok ? res.json() : null);
+        // Hardcode reliable fallbacks for known testnets. The old testcosmos.directory
+        // API is dead (502 without CORS), so it must not be fetched.
+        if (sourceChainId === 'injective-888') {
+          addRpcEndpoint('https://testnet.sentry.tm.injective.network:443');
+        }
 
-            const [mainnetData, testnetData] = await Promise.all([mainnetResPromise, testnetResPromise]);
+        let directoryRpcLoaded = false;
+        const loadDirectoryRpcEndpoints = async () => {
+          if (directoryRpcLoaded) return;
+          directoryRpcLoaded = true;
 
-            // Helper to find chain by ID and then fetch its specific RPC details
-            const findAndFetchRpc = async (directoryData: any, baseUrl: string) => {
+          const looksLikeTestnet = sourceChainId.includes('testnet') || sourceChainId.includes('-888');
+
+          const findAndFetchMainnetRpc = async () => {
+            try {
+              const directoryData = await fetch(ConfigSource.MainnetCosmosDirectory).then(res => res.ok ? res.json() : null);
               const chains = directoryData?.chains || [];
               const specificChain = chains.find((c: any) => c.chain_id === sourceChainId);
+              if (!specificChain) return [];
 
-              if (specificChain) {
-                const chainName = specificChain.name;
-                const detailRes = await fetch(`${baseUrl}/${chainName}`);
-                if (detailRes.ok) {
-                  const detailData = await detailRes.json();
-                  const endpoints = detailData?.chain?.best_apis?.rpc || detailData?.chain?.apis?.rpc || [];
-                  if (endpoints.length > 0) return endpoints[0].address;
-                }
-              }
-              return null;
-            };
-
-            // Try testnets first if it looks like a testnet visually (optimization)
-            if (sourceChainId.includes('testnet') || sourceChainId.includes('-888')) {
-              rpcEndpoint = await findAndFetchRpc(testnetData, ConfigSource.TestnetCosmosDirectory)
-                || await findAndFetchRpc(mainnetData, ConfigSource.MainnetCosmosDirectory) || '';
-            } else {
-              rpcEndpoint = await findAndFetchRpc(mainnetData, ConfigSource.MainnetCosmosDirectory)
-                || await findAndFetchRpc(testnetData, ConfigSource.TestnetCosmosDirectory) || '';
+              const detailRes = await fetch(`${ConfigSource.MainnetCosmosDirectory}/${specificChain.name}`);
+              if (!detailRes.ok) return [];
+              const detailData = await detailRes.json();
+              const endpoints = detailData?.chain?.best_apis?.rpc || detailData?.chain?.apis?.rpc || [];
+              return endpoints.map((endpoint: any) => endpoint?.address || endpoint).filter(Boolean);
+            } catch (e) {
+              console.warn(`Could not resolve RPC from cosmos.directory for chain ID: ${sourceChainId}`, e);
+              return [];
             }
+          };
 
+          try {
+            if (looksLikeTestnet) {
+              addRpcEndpoints(await fetchTestnetRpcsFromChainRegistry(sourceChainId));
+              if (rpcEndpoints.length === 0) {
+                addRpcEndpoints(await findAndFetchMainnetRpc());
+              }
+            } else {
+              addRpcEndpoints(await findAndFetchMainnetRpc());
+              if (rpcEndpoints.length === 0) {
+                addRpcEndpoints(await fetchTestnetRpcsFromChainRegistry(sourceChainId));
+              }
+            }
           } catch (e) {
-            console.warn(`Could not resolve RPC from cosmos directories for chain ID: ${sourceChainId}`, e);
+            console.warn(`Could not resolve RPC from chain registries for chain ID: ${sourceChainId}`, e);
           }
-        }
+        };
 
-        // Save valid results to cache
-        if (rpcEndpoint && sourceChainId !== 'injective-888') {
-          ibcRpcCache[sourceChainId] = { url: rpcEndpoint, timestamp: Date.now() };
+        // If we still don't have an RPC endpoint, query the directories
+        if (rpcEndpoints.length === 0) {
+          await loadDirectoryRpcEndpoints();
         }
 
         // Fallback or explicit override if necessary
-        if (!rpcEndpoint) {
+        if (rpcEndpoints.length === 0) {
           throw new Error(`Could not find a working RPC endpoint for source chain: ${sourceChainId}`);
         }
+        rpcEndpoint = rpcEndpoints[0];
 
 
         const msg: EncodeObject = {
@@ -1333,10 +1613,23 @@ export const useWalletStore = defineStore('walletStore', {
 
         // Dynamically resolve the gas denom to use the native token instead of the transferred token
         let gasDenom = tokenDenom;
-        if (sourceChainId.includes('injective')) gasDenom = 'inj';
-        else if (sourceChainId.includes('evmos')) gasDenom = 'aevmos';
-        else if (sourceChainId.includes('osmosis')) gasDenom = 'uosmo';
-        else if (sourceChainId.includes('cosmoshub')) gasDenom = 'uatom';
+        if (sourceChainConfig && sourceChainConfig.assets?.[0]?.base) {
+          gasDenom = sourceChainConfig.assets[0].base;
+        } else if (sourceChainId.toLowerCase().includes('gonka')) {
+          gasDenom = 'ngonka';
+        } else if (sourceChainId.toLowerCase().includes('side')) {
+          gasDenom = 'uside';
+        } else if (sourceChainId.includes('injective')) {
+          gasDenom = 'inj';
+        } else if (sourceChainId.includes('evmos')) {
+          gasDenom = 'aevmos';
+        } else if (sourceChainId.includes('osmosis')) {
+          gasDenom = 'uosmo';
+        } else if (sourceChainId.includes('cosmoshub')) {
+          gasDenom = 'uatom';
+        } else if (sourceChainId.includes('kava')) {
+          gasDenom = 'ukava';
+        }
 
         // Prefer wallet-provided gas price steps when available.
         let walletSuggestedGasPrice: string | number | undefined;
@@ -1371,7 +1664,7 @@ export const useWalletStore = defineStore('walletStore', {
 
         console.log(`Sending IBC transfer via protobuf signAndBroadcast (${walletType})...`, {
           chainId: sourceChainId,
-          rpcEndpoint,
+          rpcEndpoints,
           msg,
           fee,
         });
@@ -1389,14 +1682,63 @@ export const useWalletStore = defineStore('walletStore', {
             ''
           );
         } else {
-          const signingClient = await this.getStargateSigningClient(rpcEndpoint, offlineSigner);
+          let signingClient: SigningStargateClientType | null = null;
+          let lastRpcError: any = null;
+          for (let i = 0; i < rpcEndpoints.length; i++) {
+            const candidate = rpcEndpoints[i];
+            try {
+              signingClient = await this.getStargateSigningClient(candidate, offlineSigner);
+              rpcEndpoint = candidate;
+              break;
+            } catch (error) {
+              lastRpcError = error;
+              if (ibcRpcCache[sourceChainId]?.url === candidate) {
+                delete ibcRpcCache[sourceChainId];
+              }
+              console.warn(`IBC RPC endpoint failed for ${sourceChainId}: ${candidate}`, error);
+              if (i === rpcEndpoints.length - 1 && !directoryRpcLoaded) {
+                await loadDirectoryRpcEndpoints();
+              }
+            }
+          }
+
+          if (!signingClient) {
+            const cause = lastRpcError ? ` Last error: ${cleanRpcConnectError(lastRpcError)}` : '';
+            throw new Error(`Could not connect to a working RPC endpoint for source chain: ${sourceChainId}.${cause}`);
+          }
+
+          if (rpcEndpoint && sourceChainId !== 'injective-888') {
+            ibcRpcCache[sourceChainId] = { url: rpcEndpoint, timestamp: Date.now() };
+          }
+
+          let txHash = '';
           try {
+            const txRaw = await signingClient.sign(senderAddress, [msg], fee, '');
+            const { TxRaw } = await import('cosmjs-types/cosmos/tx/v1beta1/tx');
+            const txBytes = TxRaw.encode(txRaw).finish();
+            txHash = toHex(sha256(txBytes)).toUpperCase();
+
             broadcastResult = await Promise.race([
-              signingClient.signAndBroadcast(senderAddress, [msg], fee, ''),
+              signingClient.broadcastTx(txBytes),
               new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('IBC transfer broadcast timeout')), 30000)
               ),
             ]);
+          } catch (broadcastError: any) {
+            const errMsg = String(broadcastError?.message || broadcastError);
+            if (errMsg.includes('transaction indexing is disabled') && txHash) {
+              console.warn('Transaction indexing is disabled on this RPC node. Returning synthetic success response:', txHash);
+              broadcastResult = {
+                code: 0,
+                transactionHash: txHash,
+                height: 0,
+                gasUsed: 0,
+                gasWanted: 0,
+                rawLog: 'Broadcasted successfully (indexer disabled)'
+              };
+            } else {
+              throw broadcastError;
+            }
           } finally {
             signingClient.disconnect();
           }

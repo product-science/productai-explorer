@@ -300,7 +300,9 @@ export enum NetworkType {
 }
 export enum ConfigSource {
   MainnetCosmosDirectory = 'https://chains.cosmos.directory',
-  TestnetCosmosDirectory = 'https://chains.testcosmos.directory',
+  // chains.testcosmos.directory is dead (502). GitHub's testnets index is the
+  // remaining public JSON listing for cosmos/chain-registry testnets.
+  TestnetCosmosDirectory = 'https://api.github.com/repos/cosmos/chain-registry/contents/testnets',
   Local = 'local',
 }
 
@@ -355,6 +357,9 @@ export const useDashboard = defineStore('dashboard', {
       })
     },
     async loadingFromRegistry() {
+      if (this.source !== ConfigSource.MainnetCosmosDirectory) {
+        return;
+      }
       if (this.status === LoadingStatus.Empty) {
         this.status = LoadingStatus.Loading;
         get(this.source).then((res) => {

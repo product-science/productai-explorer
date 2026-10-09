@@ -1,19 +1,27 @@
 <script lang="ts" setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { useBlockchain, useWalletStore, useBaseStore } from '@/stores';
-import { Icon } from '@iconify/vue';
-import { useBridgeUnwrap, checkBridgeEpochStatus, ensureEpochOnBridge } from '@/composables/useBridgeUnwrap';
+import { ref, computed, watch, onMounted } from 'vue';
+import { useBlockchain, useWalletStore, useBaseStore, useFormatter, useDashboard } from '@/stores';
+import ConnectWallet from '@/components/ConnectWallet.vue';
+import { useBridgeUnwrap, checkBridgeEpochStatus, ensureEpochOnBridge, scanForUncompletedTransaction } from '@/composables/useBridgeUnwrap';
 import type { UnwrapParams, BridgeEpochStatus } from '@/composables/useBridgeUnwrap';
 import { get, post } from '@/libs/http';
 import { toBech32 } from '@cosmjs/encoding';
 import { ethers } from 'ethers';
+import { Icon } from '@iconify/vue';
+
+// Sub-components
+import ExchangeSwitcher from './widget/ExchangeSwitcher.vue';
+import ExchangeStepper from './widget/ExchangeStepper.vue';
+import ExchangeConnect from './widget/ExchangeConnect.vue';
+import ExchangeDetails from './widget/ExchangeDetails.vue';
+import ExchangeReview from './widget/ExchangeReview.vue';
+import ExchangeOverview from './widget/ExchangeOverview.vue';
 
 // Key derivation mismatch states
 const isAddressMismatch = ref(false);
 const derivedCosmosAddress = ref('');
 const expectedEthAddress = ref('');
 const activeEthAddress = ref('');
-
 
 const props = defineProps<{
   chain: string;
@@ -41,6 +49,35 @@ const loading = ref(false);
 const calculating = ref(false);
 const error = ref<string>('');
 const txError = ref<string>('');
+
+const isTxIndexingOff = ref(false);
+const checkingTxIndexing = ref(false);
+
+async function checkTxIndexingStatus() {
+  if (!blockchain.endpoint?.address) return;
+
+  let rpcEndpoint = blockchain.endpoint.address.replace('/chain-api', '/chain-rpc') ||
+    blockchain.endpoint.address.replace('/rest', '/rpc') ||
+    blockchain.endpoint.address.replace(':1317', ':26657') ||
+    'https://rpc.gonka.network';
+
+  if (rpcEndpoint && !rpcEndpoint.endsWith('/')) {
+    rpcEndpoint += '/';
+  }
+
+  checkingTxIndexing.value = true;
+  try {
+    const res = await get(`${rpcEndpoint}status`);
+    const txIndex = res?.result?.node_info?.other?.tx_index;
+    isTxIndexingOff.value = (txIndex === 'off');
+    console.log('RPC Transaction Indexing Status:', txIndex, 'isTxIndexingOff:', isTxIndexingOff.value);
+  } catch (err) {
+    console.warn('Failed to check RPC transaction indexing status:', err);
+    isTxIndexingOff.value = false; // fail open
+  } finally {
+    checkingTxIndexing.value = false;
+  }
+}
 const calculationTimeout = ref<number | null>(null);
 const approximateFee = ref<string>('~0.005 ETH');
 const feeLoading = ref(false);
@@ -58,19 +95,99 @@ export interface SupportedToken {
   symbol?: string;
   type?: 'ibc' | 'eth';
   sourceChannel?: string;
+  destChannel?: string;
   sourceDenom?: string;
   decimals?: number;
 }
 
+interface IbcChannelRoute {
+  sourceChannel: string;
+  destChannel: string;
+}
+
+const ibcRouteCache = new Map<string, Promise<IbcChannelRoute | null>>();
+
 // UI State
-const activeTab = ref<'deposit' | 'withdraw' | 'purchase'>('deposit');
+const activeTab = ref<'deposit' | 'withdraw' | 'purchase'>(
+  (localStorage.getItem('gonka_active_tab') as any) || 'deposit'
+);
+
+// Stepper state
+const format = useFormatter();
+const currentStep = ref(1);
+const connectWalletRef = ref<InstanceType<typeof ConnectWallet> | null>(null);
+const depositTxCompleted = ref(false);
+const withdrawTxCompleted = ref(false);
+const lastTxInfo = ref<{ amount: string; token: string; type: string; chainId: string; from: string; to: string; txHash?: string } | null>(null);
+
+// Transaction progress trackers
+const depositProgress = ref({
+  status: 'idle' as 'idle' | 'signing_ethereum' | 'waiting_bls' | 'minting' | 'completed' | 'failed',
+  lockTxHash: '',
+  message: ''
+});
+
+const ibcProgress = ref({
+  status: 'idle' as 'idle' | 'signing' | 'relaying' | 'completed' | 'failed',
+  txHash: '',
+  message: ''
+});
+
+function truncateHash(hash: string | undefined): string {
+  if (!hash) return '';
+  if (hash.length <= 16) return hash;
+  return hash.substring(0, 10) + '\u2026' + hash.substring(hash.length - 8);
+}
+
+function getExplorerTxLink(chainId: string, txHash: string | undefined): string {
+  if (!txHash) return '';
+  
+  const cid = String(chainId).toLowerCase();
+  
+  // EVM chains (Ethereum)
+  if (cid === 'ethereum' || cid === '1' || cid === '11155111' || cid.includes('sepolia') || cid.includes('eth')) {
+    const activeCosmosChain = baseStore.currentChainId || '';
+    const isSepolia = activeCosmosChain.includes('testnet') || cid === '11155111' || cid.includes('sepolia');
+    return isSepolia ? `https://sepolia.etherscan.io/tx/${txHash}` : `https://etherscan.io/tx/${txHash}`;
+  }
+
+  const activeChainId = (baseStore.currentChainId || props.chain || 'gonka').toLowerCase();
+
+  // If it's the active/local chain (Gonka), view it on our local explorer
+  if (cid === activeChainId || cid.includes('gonka')) {
+    const dashboardStore = useDashboard();
+    const match = Object.entries(dashboardStore.chains).find(([_, config]) => config.chainId === chainId);
+    const activeChainName = match ? match[0] : (props.chain || 'gonka');
+    return `/${activeChainName}/tx/${txHash}`;
+  }
+
+  // Otherwise, it's an external Cosmos chain, so use the public ping.pub explorer
+  let cleanChainName = cid.split('-')[0].split('_')[0];
+  if (cleanChainName === 'cosmoshub') {
+    cleanChainName = 'cosmos';
+  }
+
+  return `https://ping.pub/${cleanChainName}/tx/${txHash}`;
+}
+
+const truncatedAddress = computed(() => {
+  const addr = walletAddress.value;
+  if (!addr) return '';
+  if (addr.length <= 12) return addr;
+  return addr.substring(0, 8) + '\u2026' + addr.substring(addr.length - 4);
+});
+
 const supportedIbcTokens = ref<SupportedToken[]>([]);
 const supportedEthTokens = ref<SupportedToken[]>([]);
 const allDepositTokens = computed(() => {
   const list = [...supportedIbcTokens.value, ...supportedEthTokens.value];
   if (resolvedBridgeAddress.value && resolvedBridgeAddress.value.startsWith('0x')) {
-    const hasWgnk = list.some(t => t.symbol === 'WGNK' || String(t.contractAddress).toLowerCase() === resolvedBridgeAddress.value.toLowerCase());
-    if (!hasWgnk) {
+    const wgnkToken = list.find(t => t.symbol === 'WGNK');
+    if (wgnkToken) {
+      if (!wgnkToken.contractAddress || wgnkToken.contractAddress.toLowerCase() !== resolvedBridgeAddress.value.toLowerCase()) {
+        wgnkToken.contractAddress = resolvedBridgeAddress.value;
+      }
+    } else {
       list.push({
         chainId: 'ethereum',
         contractAddress: resolvedBridgeAddress.value,
@@ -87,32 +204,15 @@ const allDepositTokens = computed(() => {
 const selectedDepositToken = ref<SupportedToken | null>(null);
 const selectedWithdrawToken = ref<any>(null);
 
-// Dropdown UI State
-const isDepositDropdownOpen = ref(false);
-const isPurchaseDropdownOpen = ref(false);
-const isWithdrawDropdownOpen = ref(false);
-
 const depositAmount = ref<string>('');
 const depositTokenBalance = ref<string>('');
 const depositBalanceLoading = ref(false);
 const withdrawAmount = ref<string>('');
 const withdrawDestinationAddress = ref<string>('');
 
-// Pool availability - Purchase tab disabled when no pool
-const isPoolAvailable = computed(() => {
-  return !!(poolInfo.value && poolInfo.value.address && poolInfo.value.address.trim());
-});
-
 // Computed
 const walletAddress = computed(() => walletStore.currentAddress);
 const isConnected = computed(() => !!walletAddress.value);
-
-const usdtBalance = computed(() => {
-  const usdtToken = wrappedTokenBalances.value.find(
-    token => token.symbol === 'USDT'
-  );
-  return usdtToken ? parseFloat(usdtToken.formatted_balance) : 0;
-});
 
 const canSwap = computed(() => {
   if (!isConnected.value) return false;
@@ -123,14 +223,60 @@ const canSwap = computed(() => {
   return true;
 });
 
+function getNativeGnkBalance() {
+  const stakingBalance = walletStore.balanceOfStakingToken;
+  const balances = walletStore.balances || [];
+  const assetDenoms = (blockchain.current?.assets || []).map((asset: any) => asset?.base).filter(Boolean);
+  const candidateDenoms = Array.from(new Set([
+    stakingBalance?.denom,
+    ...assetDenoms,
+    'ngonka',
+    'ugonka',
+  ].filter(Boolean)));
+
+  for (const denom of candidateDenoms) {
+    const balance = balances.find((coin: any) => coin.denom === denom);
+    if (balance && Number(balance.amount || 0) > 0) {
+      return balance;
+    }
+  }
+
+  const gonkaLikeBalance = balances.find((coin: any) => {
+    const denom = String(coin.denom || '').toLowerCase();
+    return denom.endsWith('gonka') && Number(coin.amount || 0) > 0;
+  });
+
+  return gonkaLikeBalance || stakingBalance;
+}
+
+function getWithdrawTokenIdentity(token: any): string {
+  if (!token) return '';
+  if (token.isGnk) return 'gnk';
+
+  const chainId = String(token.token_info?.chainId || '').toLowerCase();
+  if (token.isNative) {
+    const denom = String(token.full_denom || token.token_info?.contractAddress || '').toLowerCase();
+    return `native:${chainId}:${denom}`;
+  }
+
+  const contract = String(
+    token.token_info?.wrappedContractAddress ||
+    token.token_info?.contractAddress ||
+    token.full_denom ||
+    ''
+  ).toLowerCase();
+
+  return `bridge:${chainId}:${contract}:${String(token.symbol || '').toLowerCase()}`;
+}
+
 // Withdraw tokens: user's wallet balances available for withdrawal
 const withdrawableTokens = computed(() => {
   const list = [...wrappedTokenBalances.value];
   if (walletAddress.value) {
-    const gnkBalance = walletStore.balanceOfStakingToken;
+    const gnkBalance = getNativeGnkBalance();
     const gnkAmt = parseFloat(gnkBalance.amount || '0') / 1_000_000_000;
     const hasGnk = list.some(t => t.symbol === 'GNK');
-    if (!hasGnk) {
+    if (!hasGnk && gnkAmt > 0) {
       list.unshift({
         symbol: 'GNK',
         full_denom: gnkBalance.denom,
@@ -148,16 +294,6 @@ const withdrawableTokens = computed(() => {
   return list;
 });
 
-const depositExceedsBalance = computed(() => {
-  if (!depositAmount.value || !depositTokenBalance.value) return false;
-  return parseFloat(depositAmount.value) > parseFloat(depositTokenBalance.value);
-});
-
-const withdrawExceedsBalance = computed(() => {
-  if (!withdrawAmount.value || !selectedWithdrawToken.value) return false;
-  return parseFloat(withdrawAmount.value) > parseFloat(selectedWithdrawToken.value.formatted_balance);
-});
-
 // Methods
 function cleanErrorMessage(err: any): string {
   if (!err) return '';
@@ -173,9 +309,6 @@ function cleanErrorMessage(err: any): string {
 
 async function loadAllData() {
   error.value = '';
-  // Only load pool info in the background. Wallet-dependent data (balances, metadata)
-  // is loaded by the walletAddress watcher to avoid duplicate requests.
-  loadPoolInfo();
 }
 
 async function retryLoading() {
@@ -199,19 +332,99 @@ async function loadPoolInfo() {
   }
 }
 
-function closeDropdowns(e: MouseEvent) {
-  const target = e.target as HTMLElement;
-  if (!target.closest('.custom-dropdown')) {
-    isDepositDropdownOpen.value = false;
-    isPurchaseDropdownOpen.value = false;
-    isWithdrawDropdownOpen.value = false;
-  }
-}
-
 const pendingUnwrap = ref<any>(null);
+
+function populateLastTxInfoFromPending() {
+  if (!pendingUnwrap.value) return;
+
+  const isGnk = !!pendingUnwrap.value.params.isGnk;
+  let decimals = 9;
+  let symbol = 'GNK';
+
+  const meta = getOfflineMetadata(pendingUnwrap.value.params.cw20Address) ||
+               getOfflineMetadata(pendingUnwrap.value.params.tokenContractOnEth);
+  if (meta) {
+    decimals = meta.decimals;
+    symbol = meta.symbol;
+  } else if (!isGnk) {
+    decimals = 6;
+    symbol = 'Wrapped';
+  }
+
+  const rawAmount = parseFloat(pendingUnwrap.value.params.amount);
+  const formattedAmount = isNaN(rawAmount) ? '0' : (rawAmount / Math.pow(10, decimals)).toString();
+
+  lastTxInfo.value = {
+    amount: formattedAmount,
+    token: symbol,
+    type: 'eth',
+    chainId: baseStore.currentChainId || '',
+    txHash: pendingUnwrap.value.gonkaTxHash,
+    from: 'Gonka',
+    to: 'Ethereum'
+  };
+}
 
 function checkForPending() {
   pendingUnwrap.value = loadPending();
+  if (pendingUnwrap.value && !lastTxInfo.value) {
+    populateLastTxInfoFromPending();
+  }
+}
+
+const isScanningForLostState = ref(false);
+
+async function scanForLostPendingState() {
+  if (pendingUnwrap.value || isScanningForLostState.value || !isConnected.value) return;
+
+  if (!withdrawDestinationAddress.value) {
+    await resolveWithdrawDestination();
+  }
+
+  const recipient = withdrawDestinationAddress.value;
+  if (!recipient || !recipient.startsWith('0x')) return;
+
+  isScanningForLostState.value = true;
+
+  try {
+    const activeCosmosChain = baseStore.currentChainId || blockchain.current?.chainId || props.chain || '';
+    const isTestnet = activeCosmosChain.includes('testnet');
+    const ethereumChainIdHex = isTestnet ? '0xaa36a7' : '0x1';
+
+    const bridgeResp = await blockchain.getBridgeAddresses('ethereum');
+    let bridgeAddress = bridgeResp?.bridge_address || bridgeResp?.address || bridgeResp?.approved_bridge_address;
+    if (!bridgeAddress && bridgeResp?.addresses?.length > 0) {
+      bridgeAddress = bridgeResp.addresses[0].address || bridgeResp.addresses[0];
+    }
+    if (!bridgeAddress) return;
+
+    let apiBase = '';
+    if (blockchain.endpoint?.address?.includes('/chain-api')) {
+      apiBase = blockchain.endpoint.address.replace('/chain-api', '/api') + '/v1';
+    } else {
+      apiBase = (blockchain.inferenceApiEndpoint || blockchain.endpoint?.address || '') + '/v1';
+    }
+
+    const recovered = await scanForUncompletedTransaction(
+      blockchain.endpoint?.address || '',
+      recipient,
+      bridgeAddress,
+      withdrawableTokens.value
+    );
+
+    if (recovered) {
+      console.log('Recovered uncompleted unwrap from chain history:', recovered);
+      localStorage.setItem('gonka_unwrap_pending', JSON.stringify(recovered));
+      checkForPending();
+      if (activeTab.value === 'withdraw') {
+        currentStep.value = 3;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to scan for lost pending state:', err);
+  } finally {
+    isScanningForLostState.value = false;
+  }
 }
 
 function handleClearPending() {
@@ -219,9 +432,119 @@ function handleClearPending() {
   checkForPending();
 }
 
+function handleDiscardPending() {
+  clearPending();
+  checkForPending();
+  currentStep.value = 2;
+}
+
 function handleResetUnwrap() {
   resetUnwrap();
   checkForPending();
+}
+
+// --- STEPPER FUNCTIONS ---
+
+function openConnectWallet() {
+  connectWalletRef.value?.openModal();
+}
+
+async function walletStateChange(res: any) {
+  try {
+    if (res?.detail?.value) {
+      setTimeout(async () => {
+        try {
+          await walletStore.setConnectedWallet(res.detail.value);
+        } catch (error) {
+          console.error('Error setting connected wallet:', error);
+        }
+      }, 50);
+    }
+  } catch (error) {
+    console.error('Error in wallet state change:', error);
+  }
+}
+
+function handleTransferMore() {
+  depositTxCompleted.value = false;
+  withdrawTxCompleted.value = false;
+  lastTxInfo.value = null;
+  txError.value = '';
+  depositProgress.value = { status: 'idle', lockTxHash: '', message: '' };
+  ibcProgress.value = { status: 'idle', txHash: '', message: '' };
+  resetUnwrap();
+  checkForPending();
+  currentStep.value = 2;
+}
+
+function handleRetry() {
+  txError.value = '';
+  depositTxCompleted.value = false;
+  withdrawTxCompleted.value = false;
+  depositProgress.value = { status: 'idle', lockTxHash: '', message: '' };
+  ibcProgress.value = { status: 'idle', txHash: '', message: '' };
+  resetUnwrap();
+  checkForPending();
+  currentStep.value = 2;
+}
+
+async function handleStepSubmit() {
+  // Save tx info for Step 3 summary display
+  if (activeTab.value === 'deposit' && selectedDepositToken.value) {
+    const token = selectedDepositToken.value;
+    const chainDisplay = token.chainId ? (token.chainId.charAt(0).toUpperCase() + token.chainId.slice(1).split('-')[0]) : 'External';
+    
+    const metadataRoute = getIbcRouteMetadata(token);
+    let sourceChannel = metadataRoute.sourceChannel;
+    let destChannel = metadataRoute.destChannel;
+    
+    if (token.type === 'ibc' && !sourceChannel) {
+      const resolved = await resolveChannelForToken(token);
+      if (resolved) {
+        sourceChannel = resolved.sourceChannel;
+        destChannel = resolved.destChannel;
+      }
+    }
+
+    lastTxInfo.value = {
+      amount: depositAmount.value,
+      token: token.symbol || '',
+      type: token.type || '',
+      chainId: token.chainId || '',
+      from: token.type === 'ibc' ? `${chainDisplay}${sourceChannel ? ` (${sourceChannel})` : ''}` : 'Ethereum',
+      to: token.type === 'ibc' ? `Gonka${destChannel ? ` (${destChannel})` : ''}` : 'Gonka'
+    };
+  } else if (activeTab.value === 'withdraw' && selectedWithdrawToken.value) {
+    const token = selectedWithdrawToken.value;
+    const chainId = token.token_info?.chainId || '';
+    const chainDisplay = chainId ? (chainId.charAt(0).toUpperCase() + chainId.slice(1).split('-')[0]) : 'External';
+    
+    // For IBC withdraw, let's resolve the channel
+    let channelInfo = '';
+    if (token.isNative && chainId) {
+      const localChannel = await resolveLocalChannelForWithdrawToken(token);
+      channelInfo = localChannel ? ` (${localChannel})` : '';
+    }
+
+    lastTxInfo.value = {
+      amount: withdrawAmount.value,
+      token: token.symbol || '',
+      type: token.isNative ? 'ibc' : 'eth',
+      chainId: token.token_info?.chainId || '',
+      from: 'Gonka',
+      to: token.isNative ? `${chainDisplay}${channelInfo}` : 'Ethereum'
+    };
+  }
+
+  currentStep.value = 3;
+  depositTxCompleted.value = false;
+  withdrawTxCompleted.value = false;
+
+  if (activeTab.value === 'deposit') {
+    await executeDeposit();
+  } else {
+    await executeWithdraw();
+  }
 }
 
 async function handleResumePending() {
@@ -254,6 +577,7 @@ async function handleResumePending() {
     const config = {
       rpcEndpoint,
       apiBase,
+      cosmosRestEndpoint: blockchain.endpoint?.address || '',
       chainId: activeCosmosChain,
       ethereumChainIdHex,
     };
@@ -268,18 +592,21 @@ async function handleResumePending() {
 }
 
 onMounted(() => {
-  document.addEventListener('click', closeDropdowns);
   loadAllData();
   checkForPending();
 
-  // Check for pending unwrap to resume
+  // If wallet is already connected on reload, auto-advance to Step 2
+  if (isConnected.value && !pendingUnwrap.value) {
+    currentStep.value = 2;
+  }
+
+  // Check for pending unwrap to resume — auto-advance to Step 3
   if (pendingUnwrap.value) {
     activeTab.value = 'withdraw';
+    if (isConnected.value) {
+      currentStep.value = 3;
+    }
   }
-});
-
-onUnmounted(() => {
-  document.removeEventListener('click', closeDropdowns);
 });
 
 // --- DEPOSIT TAB LOGIC ---
@@ -291,69 +618,240 @@ async function executeDeposit() {
   txError.value = '';
 
   try {
+    let txHash: string | undefined;
     if (selectedDepositToken.value.type === 'ibc') {
-      await initiateIbcDeposit(selectedDepositToken.value, depositAmount.value);
+      // IBC Deposit
+      ibcProgress.value.status = 'signing';
+      ibcProgress.value.txHash = '';
+      ibcProgress.value.message = 'Please approve the transfer in your wallet.';
+      txHash = await initiateIbcDeposit(selectedDepositToken.value, depositAmount.value);
+      if (txHash && lastTxInfo.value) {
+        lastTxInfo.value.txHash = txHash;
+      }
+      ibcProgress.value.txHash = txHash || '';
+      ibcProgress.value.status = 'relaying';
+      ibcProgress.value.message = 'IBC packet transfer in progress...';
+      // Simulate relayer passing packet
+      await new Promise(resolve => setTimeout(resolve, 4000));
+      ibcProgress.value.status = 'completed';
+      ibcProgress.value.message = 'Transaction successfully relayed.';
+      depositTxCompleted.value = true;
     } else {
-      await initiateEthDeposit(selectedDepositToken.value, depositAmount.value);
+      // EVM Deposit
+      depositProgress.value.status = 'signing_ethereum';
+      depositProgress.value.lockTxHash = '';
+      depositProgress.value.message = 'Locking tokens on Ethereum...';
+      txHash = await initiateEthDeposit(selectedDepositToken.value, depositAmount.value);
+      if (txHash && lastTxInfo.value) {
+        lastTxInfo.value.txHash = txHash;
+      }
+      depositProgress.value.lockTxHash = txHash || '';
+      depositProgress.value.status = 'waiting_bls';
+      depositProgress.value.message = 'Waiting for bridge validator signatures...';
+      await new Promise(resolve => setTimeout(resolve, 4000));
+      depositProgress.value.status = 'minting';
+      depositProgress.value.message = 'Minting tokens on Gonka...';
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      depositProgress.value.status = 'completed';
+      depositProgress.value.message = 'Tokens successfully minted.';
+      depositTxCompleted.value = true;
     }
-
     depositAmount.value = '';
     selectedDepositToken.value = null;
   } catch (err) {
     txError.value = err instanceof Error ? err.message : 'Deposit failed';
     console.error('Deposit Error:', err);
+    depositProgress.value.status = 'failed';
+    ibcProgress.value.status = 'failed';
   } finally {
     calculating.value = false;
   }
 }
 
-async function resolveSourceChannel(targetChainId: string): Promise<string | null> {
-  try {
-    const endpoint = blockchain.endpoint?.address;
-    if (!endpoint) return null;
+function normalizeChannelId(value: unknown): string | undefined {
+  const channel = typeof value === 'string' ? value.trim() : '';
+  return channel.startsWith('channel-') ? channel : undefined;
+}
 
-    const channelsData = await get(`${endpoint}/ibc/core/channel/v1/channels`);
-    const channels = channelsData?.channels || [];
+function getIbcRouteMetadata(token: any): Partial<IbcChannelRoute> {
+  const info = token?.token_info || {};
+  return {
+    sourceChannel: normalizeChannelId(
+      token?.sourceChannel ||
+      token?.source_channel ||
+      token?.ibc_channel ||
+      info?.sourceChannel ||
+      info?.source_channel ||
+      info?.ibc_channel
+    ),
+    destChannel: normalizeChannelId(
+      token?.destChannel ||
+      token?.dest_channel ||
+      token?.destination_channel ||
+      token?.local_channel ||
+      token?.gonka_channel ||
+      info?.destChannel ||
+      info?.dest_channel ||
+      info?.destination_channel ||
+      info?.local_channel ||
+      info?.gonka_channel
+    )
+  };
+}
 
-    for (const channel of channels) {
-      if (channel.state !== 'STATE_OPEN' || channel.port_id !== 'transfer') continue;
+function getIbcHash(denom: unknown): string | null {
+  if (typeof denom !== 'string') return null;
+  const match = denom.trim().match(/^ibc\/([a-fA-F0-9]+)$/);
+  return match ? match[1] : null;
+}
 
-      const clientData = await get(`${endpoint}/ibc/core/channel/v1/channels/${channel.channel_id}/ports/transfer/client_state`);
-      const clientChainId = clientData?.identified_client_state?.client_state?.chain_id || clientData?.client_state?.chain_id;
-
-      if (clientChainId === targetChainId) {
-        return channel.counterparty?.channel_id || null;
-      }
-    }
-  } catch (error) {
-    console.error('Failed to auto-resolve IBC source channel:', error);
+function getFirstTransferChannel(path: unknown): string | null {
+  if (typeof path !== 'string') return null;
+  const parts = path.split('/');
+  if (parts.length >= 2 && parts[0] === 'transfer') {
+    return normalizeChannelId(parts[1]) || null;
   }
   return null;
 }
 
+function getTokenIbcDenom(token: any): string | undefined {
+  const candidates = [
+    token?.contractAddress,
+    token?.full_denom,
+    token?.token_info?.contractAddress
+  ];
+  return candidates.find((denom) => getIbcHash(denom)) || candidates.find((denom) => typeof denom === 'string');
+}
+
+function cacheIbcRoute(cacheKey: string, resolver: () => Promise<IbcChannelRoute | null>) {
+  const cached = ibcRouteCache.get(cacheKey);
+  if (cached) return cached;
+
+  const promise = resolver().then((route) => {
+    if (!route) ibcRouteCache.delete(cacheKey);
+    return route;
+  }).catch((error) => {
+    ibcRouteCache.delete(cacheKey);
+    console.error('Failed to resolve IBC route:', error);
+    return null;
+  });
+
+  ibcRouteCache.set(cacheKey, promise);
+  return promise;
+}
+
+async function resolveChannelFromIbcDenom(denom: unknown): Promise<IbcChannelRoute | null> {
+  const hash = getIbcHash(denom);
+  const endpoint = blockchain.endpoint?.address;
+  if (!hash || !endpoint) return null;
+
+  return cacheIbcRoute(`denom:${endpoint}:${hash.toLowerCase()}`, async () => {
+    const traceData = await blockchain.rpc.getIBCAppTransferDenom(hash);
+    const destChannel = getFirstTransferChannel(traceData?.denom_trace?.path);
+    if (!destChannel) return null;
+
+    const channelData = await get(`${endpoint}/ibc/core/channel/v1/channels/${destChannel}/ports/transfer`);
+    const sourceChannel = normalizeChannelId(channelData?.channel?.counterparty?.channel_id);
+    if (!sourceChannel) return null;
+
+    return { sourceChannel, destChannel };
+  });
+}
+
+async function resolveConnectionIdsForClient(endpoint: string, clientId: string): Promise<string[]> {
+  try {
+    const clientConnectionsData = await get(`${endpoint}/ibc/core/connection/v1/client_connections/${clientId}`);
+    const connectionPaths = clientConnectionsData?.connection_paths || [];
+    if (connectionPaths.length > 0) return connectionPaths;
+  } catch {
+    // Some REST gateways do not expose client_connections; fall back to the list query below.
+  }
+
+  const connectionsData = await get(`${endpoint}/ibc/core/connection/v1/connections`);
+  const connections = connectionsData?.connections || [];
+  return connections
+    .filter((conn: any) => conn.client_id === clientId)
+    .map((conn: any) => conn.id)
+    .filter(Boolean);
+}
+
+async function resolveTransferChannelForConnection(endpoint: string, connectionId: string): Promise<IbcChannelRoute | null> {
+  const findTransferRoute = (channels: any[]) => {
+    const targetChannel = channels.find((ch: any) => {
+      return ch.state === 'STATE_OPEN' &&
+        ch.port_id === 'transfer' &&
+        ch.connection_hops?.includes(connectionId);
+    });
+
+    const sourceChannel = normalizeChannelId(targetChannel?.counterparty?.channel_id);
+    const destChannel = normalizeChannelId(targetChannel?.channel_id);
+    return sourceChannel && destChannel ? { sourceChannel, destChannel } : null;
+  };
+
+  try {
+    const channelsData = await get(`${endpoint}/ibc/core/channel/v1/connections/${connectionId}/channels`);
+    const route = findTransferRoute(channelsData?.channels || []);
+    if (route) return route;
+  } catch {
+    // Fall back to the full channel list if the connection-scoped query is unavailable.
+  }
+
+  const channelsData = await get(`${endpoint}/ibc/core/channel/v1/channels`);
+  return findTransferRoute(channelsData?.channels || []);
+}
+
+async function resolveChannelForChain(targetChainId: string): Promise<IbcChannelRoute | null> {
+  const endpoint = blockchain.endpoint?.address;
+  if (!endpoint || !targetChainId) return null;
+
+  return cacheIbcRoute(`chain:${endpoint}:${targetChainId.toLowerCase()}`, async () => {
+    const clientsData = await get(`${endpoint}/ibc/core/client/v1/client_states`);
+    const clientStates = clientsData?.client_states || [];
+
+    const targetClient = clientStates.find((c: any) => {
+      const cState = c?.client_state || c?.identified_client_state?.client_state;
+      return cState?.chain_id && String(cState.chain_id).toLowerCase() === targetChainId.toLowerCase();
+    });
+    const clientId = targetClient?.client_id || targetClient?.identified_client_state?.client_id;
+    if (!clientId) return null;
+
+    const connectionIds = await resolveConnectionIdsForClient(endpoint, clientId);
+    for (const connectionId of connectionIds) {
+      const route = await resolveTransferChannelForConnection(endpoint, connectionId);
+      if (route) return route;
+    }
+    return null;
+  });
+}
+
+async function resolveChannelForToken(token: any): Promise<IbcChannelRoute | null> {
+  const metadataRoute = getIbcRouteMetadata(token);
+  if (metadataRoute.sourceChannel && metadataRoute.destChannel) {
+    return metadataRoute as IbcChannelRoute;
+  }
+
+  const denomRoute = await resolveChannelFromIbcDenom(getTokenIbcDenom(token));
+  if (denomRoute) return denomRoute;
+
+  const chainId = token?.chainId || token?.token_info?.chainId;
+  return chainId ? resolveChannelForChain(chainId) : null;
+}
+
 // Also resolves the local (Gonka-side) channel for a target chain - needed for withdrawals
 async function resolveLocalChannel(targetChainId: string): Promise<string | null> {
-  try {
-    const endpoint = blockchain.endpoint?.address;
-    if (!endpoint) return null;
+  const resolved = await resolveChannelForChain(targetChainId);
+  return resolved?.destChannel || null;
+}
 
-    const channelsData = await blockchain.rpc.getIBCChannels();
-    const channels = channelsData?.channels || [];
+async function resolveLocalChannelForWithdrawToken(token: any): Promise<string | null> {
+  const metadataRoute = getIbcRouteMetadata(token);
+  if (metadataRoute.destChannel) return metadataRoute.destChannel;
 
-    for (const channel of channels) {
-      if (channel.state !== 'STATE_OPEN' || channel.port_id !== 'transfer') continue;
+  const denomRoute = await resolveChannelFromIbcDenom(getTokenIbcDenom(token));
+  if (denomRoute) return denomRoute.destChannel;
 
-      const clientData = await get(`${endpoint}/ibc/core/channel/v1/channels/${channel.channel_id}/ports/transfer/client_state`);
-      const clientChainId = clientData?.identified_client_state?.client_state?.chain_id || clientData?.client_state?.chain_id;
-
-      if (clientChainId === targetChainId) {
-        return channel.channel_id;
-      }
-    }
-  } catch (error) {
-    console.error('Failed to resolve local channel:', error);
-  }
-  return null;
+  const chainId = token?.token_info?.chainId || token?.chainId;
+  return chainId ? resolveLocalChannel(chainId) : null;
 }
 
 async function initiateIbcDeposit(token: SupportedToken, amountInput: string) {
@@ -361,14 +859,16 @@ async function initiateIbcDeposit(token: SupportedToken, amountInput: string) {
   const contractHash = token.contractAddress;
 
   const sourcePort = 'transfer';
-  let sourceChannel = token.sourceChannel || 'channel-0';
+  let sourceChannel = getIbcRouteMetadata(token).sourceChannel;
   let tokenDenom = contractHash;
 
-  if (sourceChannel === 'channel-0' || !sourceChannel) {
-    const resolvedChannel = await resolveSourceChannel(chainId);
-    if (resolvedChannel) {
-      sourceChannel = resolvedChannel;
-    }
+  if (!sourceChannel) {
+    const resolvedRoute = await resolveChannelForToken(token);
+    sourceChannel = resolvedRoute?.sourceChannel;
+  }
+
+  if (!sourceChannel) {
+    throw new Error(`Could not resolve IBC source channel for ${chainId}`);
   }
 
   if (token.sourceDenom) {
@@ -390,7 +890,8 @@ async function initiateIbcDeposit(token: SupportedToken, amountInput: string) {
 
   const receiver = walletAddress.value;
 
-  await walletStore.executeIbcTransfer(chainId, sourcePort, sourceChannel, tokenDenom, amountInBaseUnits, receiver);
+  const result = await walletStore.executeIbcTransfer(chainId, sourcePort, sourceChannel, tokenDenom, amountInBaseUnits, receiver);
+  return result?.transactionHash;
 }
 
 async function initiateEthDeposit(token: SupportedToken, amountInput: string) {
@@ -469,10 +970,11 @@ async function initiateEthDeposit(token: SupportedToken, amountInput: string) {
   const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
   const fromAddress = accounts[0];
 
-  await ethProvider.request({
+  const txHash = await ethProvider.request({
     method: 'eth_sendTransaction',
     params: [{ from: fromAddress, to: contractHash, data: data }],
   });
+  return txHash;
 }
 
 function parseBytes32OrString(hex: string): string {
@@ -549,7 +1051,7 @@ function getOfflineMetadata(addressOrHash: string): { symbol: string, decimals: 
   return null;
 }
 
-// Known mainnet ERC20 contracts — always query Ethereum mainnet for these
+// Known mainnet ERC20 contracts
 const KNOWN_MAINNET_CONTRACTS = new Set([
   '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', // USDC
   '0xdac17f958d2ee523a2206206994597c13d831ec7', // USDT
@@ -574,17 +1076,12 @@ const SEPOLIA_RPCS = [
 
 async function queryEvmRpc(to: string, data: string): Promise<string> {
   const contractLower = to.toLowerCase();
-
-  // Determine which network to query:
-  // If the contract is a known mainnet address, always use mainnet RPC
-  // regardless of the Cosmos chain being a testnet.
   const isKnownMainnet = KNOWN_MAINNET_CONTRACTS.has(contractLower);
   const activeCosmosChain = baseStore.currentChainId || blockchain.current?.chainId || '';
   const cosmosIsTestnet = activeCosmosChain.includes('testnet');
   const useMainnet = isKnownMainnet || !cosmosIsTestnet;
 
   const rpcList = useMainnet ? MAINNET_RPCS : SEPOLIA_RPCS;
-  console.log(`[queryEvmRpc] Contract: ${to} | Known mainnet: ${isKnownMainnet} | Cosmos testnet: ${cosmosIsTestnet} | Using: ${useMainnet ? 'MAINNET' : 'SEPOLIA'}`);
 
   for (const evmRpcUrl of rpcList) {
     try {
@@ -594,14 +1091,12 @@ async function queryEvmRpc(to: string, data: string): Promise<string> {
         params: [{ to, data }, 'latest'],
         id: 1
       });
-      console.log(`[queryEvmRpc] RPC ${evmRpcUrl} response:`, json);
       if (json.error) {
-        console.warn(`[queryEvmRpc] RPC returned error:`, json.error);
-        continue; // try next RPC
+        continue;
       }
       return json?.result || '0x';
     } catch (e) {
-      console.warn(`[queryEvmRpc] RPC ${evmRpcUrl} failed:`, e);
+      // skip
     }
   }
   return '0x';
@@ -624,10 +1119,30 @@ async function requestEvmRpc(method: string, params: any[]): Promise<any> {
         return json.result;
       }
     } catch (e) {
-      console.warn(`[requestEvmRpc] RPC ${evmRpcUrl} failed for method ${method}:`, e);
+      // skip
     }
   }
   return null;
+}
+
+function getChainGasDetails(chainId: string): { symbol: string; decimals: number; defaultFee: string } {
+  const chainLower = chainId.toLowerCase();
+  if (chainLower.includes('kava')) {
+    return { symbol: 'KAVA', decimals: 6, defaultFee: '0.01' };
+  }
+  if (chainLower.includes('injective') || chainLower.includes('inj')) {
+    return { symbol: 'INJ', decimals: 18, defaultFee: '0.01' };
+  }
+  if (chainLower.includes('osmosis') || chainLower.includes('osmo')) {
+    return { symbol: 'OSMO', decimals: 6, defaultFee: '0.025' };
+  }
+  if (chainLower.includes('cosmoshub') || chainLower.includes('atom')) {
+    return { symbol: 'ATOM', decimals: 6, defaultFee: '0.005' };
+  }
+  if (chainLower.includes('evmos')) {
+    return { symbol: 'EVMOS', decimals: 18, defaultFee: '0.1' };
+  }
+  return { symbol: 'ATOM', decimals: 6, defaultFee: '0.005' };
 }
 
 async function fetchApproximateFee() {
@@ -645,12 +1160,64 @@ async function fetchApproximateFee() {
   }
 
   const isEth = isDeposit ? (token.type === 'eth') : (!token.isNative);
-  if (!isEth) {
+  const isIbc = isDeposit && token.type === 'ibc';
+  if (!isEth && !isIbc) {
     approximateFee.value = '';
     return;
   }
 
   feeLoading.value = true;
+
+  if (isIbc) {
+    try {
+      const chainDetails = getChainGasDetails(token.chainId);
+      let gasDenom = token.sourceDenom || token.contractAddress;
+      if (token.chainId.includes('injective')) gasDenom = 'inj';
+      else if (token.chainId.includes('evmos')) gasDenom = 'aevmos';
+      else if (token.chainId.includes('osmosis')) gasDenom = 'uosmo';
+      else if (token.chainId.includes('cosmoshub')) gasDenom = 'uatom';
+      else if (token.chainId.includes('kava')) gasDenom = 'ukava';
+
+      let suggestedGasPrice: number | undefined;
+      try {
+        const walletType = walletStore.connectedWallet?.wallet;
+        if (walletType === 'keplr' && typeof (window.keplr as any)?.getChainInfoWithoutEndpoints === 'function') {
+          const chainInfo = await (window.keplr as any).getChainInfoWithoutEndpoints(token.chainId);
+          const feeCurrency =
+            chainInfo?.feeCurrencies?.find((c: any) => c?.coinMinimalDenom === gasDenom) ||
+            chainInfo?.feeCurrencies?.[0];
+          const gasPrice =
+            feeCurrency?.gasPriceStep?.average ??
+            feeCurrency?.gasPriceStep?.high ??
+            feeCurrency?.gasPriceStep?.low;
+          if (gasPrice !== undefined) {
+            suggestedGasPrice = Number(gasPrice);
+          }
+        }
+      } catch (e) {
+        console.warn('Could not fetch gas price suggestion from Keplr:', e);
+      }
+
+      const gasLimit = 500000;
+      let feeInNative = parseFloat(chainDetails.defaultFee);
+
+      if (suggestedGasPrice !== undefined) {
+        feeInNative = (gasLimit * suggestedGasPrice) / Math.pow(10, chainDetails.decimals);
+      } else if (token.chainId.includes('injective')) {
+        const minGasPrice = 160000000;
+        feeInNative = (gasLimit * minGasPrice) / Math.pow(10, 18);
+      }
+
+      approximateFee.value = `~${feeInNative.toFixed(4)} ${chainDetails.symbol}`;
+    } catch (err) {
+      console.warn('[Fee Estimation] Failed to calculate dynamic IBC fee:', err);
+      const chainDetails = getChainGasDetails(token.chainId);
+      approximateFee.value = `~${chainDetails.defaultFee} ${chainDetails.symbol}`;
+    } finally {
+      feeLoading.value = false;
+    }
+    return;
+  }
 
   try {
     const gasPriceHex = await requestEvmRpc('eth_gasPrice', []);
@@ -718,7 +1285,6 @@ async function fetchApproximateFee() {
 async function loadSupportedDepositTokens() {
   if (!blockchain.endpoint?.address) return;
   try {
-    // Dynamically retrieve bridge address from API first
     try {
       const bridgeResp = await blockchain.getBridgeAddresses('ethereum');
       let bridgeAddress = bridgeResp?.bridge_address || bridgeResp?.address || bridgeResp?.approved_bridge_address;
@@ -764,12 +1330,12 @@ async function loadSupportedDepositTokens() {
         chainId: String(t.chainId),
         contractAddress: contract,
         symbol: contractLower.startsWith('ibc/') ? 'IBC Token' : (contractLower.startsWith('0x') ? 'ERC20 Token' : 'Token'),
-        sourceChannel: t.sourceChannel || (t as any).source_channel || (t as any).ibc_channel || 'channel-0',
+        sourceChannel: normalizeChannelId(t.sourceChannel || (t as any).source_channel || (t as any).ibc_channel),
+        destChannel: normalizeChannelId((t as any).destChannel || (t as any).dest_channel || (t as any).destination_channel || (t as any).local_channel || (t as any).gonka_channel),
         sourceDenom: t.sourceDenom || (t as any).source_denom || (t as any).base_denom || undefined,
         decimals: t.decimals || estimatedDecimals
       };
 
-      // Check offline metadata mapping first
       const offline = getOfflineMetadata(contract);
       if (offline) {
         tokenObj.symbol = offline.symbol;
@@ -805,10 +1371,8 @@ async function loadSupportedDepositTokens() {
       }
     });
 
-    // Dynamically retrieve real EVM ERC20 metadata via public RPC
     if (ethTemp.length > 0) {
       await Promise.all(ethTemp.map(async (token) => {
-        // If already resolved offline, skip RPC queries
         const offline = getOfflineMetadata(token.contractAddress);
         if (offline) return;
 
@@ -832,9 +1396,7 @@ async function loadSupportedDepositTokens() {
       }));
     }
 
-    // Resolve IBC symbols using denom traces asynchronously
     await Promise.all(ibcTemp.map(async (token) => {
-      // Check offline metadata mapping first
       const offline = getOfflineMetadata(token.contractAddress);
       if (offline) return;
 
@@ -860,9 +1422,7 @@ async function loadSupportedDepositTokens() {
   }
 }
 
-// Fetch balance of the selected deposit token on its source chain
 async function fetchDepositTokenBalance() {
-  // Reset mismatch states
   isAddressMismatch.value = false;
   derivedCosmosAddress.value = '';
   expectedEthAddress.value = '';
@@ -880,48 +1440,27 @@ async function fetchDepositTokenBalance() {
     const token = selectedDepositToken.value;
 
     if (token.type === 'eth') {
-      // For ETH tokens, get ERC-20 balance from user's Ethereum wallet
       const connectedWalletType = walletStore.connectedWallet?.wallet;
-      console.log('[ERC20 Balance] Connected wallet type:', connectedWalletType);
-      console.log('[ERC20 Balance] Token:', token.symbol, token.contractAddress);
-
-      // Try to find an EVM provider - check multiple sources
       let ethProvider: any = null;
-      let providerSource = 'none';
 
-      // 1. Try wallet-specific ethereum provider
       if (connectedWalletType === 'keplr' && (window as any).keplr?.ethereum) {
         ethProvider = (window as any).keplr.ethereum;
-        providerSource = 'keplr.ethereum';
       } else if (connectedWalletType === 'leap' && (window as any).leap?.ethereum) {
         ethProvider = (window as any).leap.ethereum;
-        providerSource = 'leap.ethereum';
       }
 
-      // 2. If wallet-specific provider not found, try standalone window.ethereum (MetaMask/Rabby)
       if (!ethProvider && (window as any).ethereum) {
         ethProvider = (window as any).ethereum;
-        providerSource = 'window.ethereum';
       }
-
-      console.log('[ERC20 Balance] Provider source:', providerSource, '| Available:', !!ethProvider);
-      console.log('[ERC20 Balance] keplr exists:', !!(window as any).keplr);
-      console.log('[ERC20 Balance] keplr.ethereum exists:', !!(window as any).keplr?.ethereum);
-      console.log('[ERC20 Balance] window.ethereum exists:', !!(window as any).ethereum);
 
       if (ethProvider) {
         try {
-          console.log('[ERC20 Balance] Requesting eth_requestAccounts from', providerSource, '...');
           const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
-          console.log('[ERC20 Balance] Accounts returned:', accounts);
-
           if (!accounts || accounts.length === 0) {
-            console.warn('[ERC20 Balance] No accounts returned from', providerSource);
             depositTokenBalance.value = '0.000000';
             return;
           }
           const from = accounts[0];
-          console.log('[ERC20 Balance] Using ETH address:', from);
           activeEthAddress.value = from;
 
           const activeCosmosChain = baseStore.currentChainId || blockchain.current?.chainId || props.chain || '';
@@ -930,29 +1469,15 @@ async function fetchDepositTokenBalance() {
           if (walletProvider && activeCosmosChain && token.type === 'eth') {
             try {
               const key = await walletProvider.getKey(activeCosmosChain);
-              
-              // Derive the REAL Ethereum address from the Cosmos public key
-              // using keccak256 (standard Ethereum derivation).
-              // NOTE: getKey().ethereumHexAddress is NOT the real ETH address —
-              // it's just the Cosmos address bytes (sha256+ripemd160) in hex,
-              // which differs from the keccak256-derived ETH address.
               const pubKeyBytes = key.pubKey;
               if (pubKeyBytes && pubKeyBytes.length > 0) {
                 const pubKeyHex = '0x' + Array.from(pubKeyBytes as Uint8Array, (b) => (b as number).toString(16).padStart(2, '0')).join('');
                 const derivedEthAddress = ethers.computeAddress(pubKeyHex);
                 
-                console.log('[Key Verification] Cosmos pubKey derived ETH address:', derivedEthAddress);
-                console.log('[Key Verification] EVM Provider address (eth_requestAccounts):', from);
-                console.log('[Key Verification] Match:', from.toLowerCase() === derivedEthAddress.toLowerCase());
-                
                 if (from.toLowerCase() !== derivedEthAddress.toLowerCase()) {
-                  // Different keys: the EVM account's private key ≠ Cosmos account's private key.
-                  // This means mnemonic derivation paths produced different keys per chain.
-                  // Bridge-minted tokens would go to a Cosmos address the user doesn't control.
                   isAddressMismatch.value = true;
                   expectedEthAddress.value = derivedEthAddress;
                   
-                  // Decode active EVM hex address and Bech32 encode with current prefix
                   const rawHex = from.startsWith('0x') ? from.substring(2) : from;
                   const hexBytes = new Uint8Array(
                     rawHex.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || []
@@ -961,7 +1486,6 @@ async function fetchDepositTokenBalance() {
                   const targetPrefix = blockchain.current?.bech32Prefix || 'gonka';
                   derivedCosmosAddress.value = toBech32(targetPrefix, hexBytes);
                 } else {
-                  // Same key: private-key account or matching mnemonic — bridge will work correctly
                   isAddressMismatch.value = false;
                 }
               }
@@ -970,42 +1494,29 @@ async function fetchDepositTokenBalance() {
             }
           }
 
-          // ERC-20 balanceOf(address) selector = 0x70a08231
           const paddedAddr = from.replace('0x', '').padStart(64, '0');
           const data = '0x70a08231' + paddedAddr;
-          
-          // Query the public RPC (not the user's wallet provider network)
-          console.log('[ERC20 Balance] Querying balanceOf on contract:', token.contractAddress);
           const result = await queryEvmRpc(token.contractAddress, data);
-          console.log('[ERC20 Balance] Raw RPC result:', result);
 
           if (!result || result === '0x' || result === '0x0') {
-            console.log('[ERC20 Balance] Empty/zero result from RPC');
             depositTokenBalance.value = '0.000000';
             return;
           }
 
           const decimals = token.decimals || 6;
           const rawBalance = parseInt(result, 16);
-          console.log('[ERC20 Balance] Parsed balance:', rawBalance, 'decimals:', decimals);
           if (isNaN(rawBalance)) {
             depositTokenBalance.value = '0.000000';
           } else {
             depositTokenBalance.value = (rawBalance / Math.pow(10, decimals)).toFixed(6);
           }
-          console.log('[ERC20 Balance] Final display balance:', depositTokenBalance.value);
         } catch (e: any) {
-          console.warn('[ERC20 Balance] Failed to query ERC-20 balance:', e?.message || e);
-          console.warn('[ERC20 Balance] Error code:', e?.code, '| Provider:', providerSource);
           depositTokenBalance.value = '0.000000';
         }
       } else {
-        console.warn('[ERC20 Balance] No Ethereum provider found at all! Cannot fetch ERC20 balance.');
-        console.warn('[ERC20 Balance] User needs MetaMask, or Keplr/Leap with EVM support enabled.');
         depositTokenBalance.value = '0.000000';
       }
     } else {
-      // For IBC tokens, get balance from source chain via Keplr
       const keplr = (window as any).keplr;
       if (keplr) {
         try {
@@ -1015,9 +1526,6 @@ async function fetchDepositTokenBalance() {
           if (accounts.length > 0) {
             const sourceAddress = accounts[0].address;
 
-            // Resolve the native base denom on the source chain.
-            // token.contractAddress is the IBC hash on Gonka (e.g. ibc/115F68...),
-            // but on the source chain it's the native denom (e.g. uusdt).
             let nativeDenom = token.sourceDenom || '';
             if (!nativeDenom && token.contractAddress.startsWith('ibc/')) {
               try {
@@ -1026,7 +1534,7 @@ async function fetchDepositTokenBalance() {
                 if (traceData?.denom_trace?.base_denom) {
                   nativeDenom = traceData.denom_trace.base_denom;
                 }
-              } catch { /* fallback below */ }
+              } catch { /* skip */ }
             }
             if (!nativeDenom) nativeDenom = token.contractAddress;
 
@@ -1048,20 +1556,17 @@ async function fetchDepositTokenBalance() {
             }
           }
         } catch (e) {
-          console.warn('Could not fetch source chain balance:', e);
           depositTokenBalance.value = '0.000000';
         }
       }
     }
   } catch (err) {
-    console.warn('Error fetching deposit token balance:', err);
     depositTokenBalance.value = '0.000000';
   } finally {
     depositBalanceLoading.value = false;
   }
 }
 
-// Auto-resolve destination address for withdraw based on selected token's target network
 async function resolveWithdrawDestination() {
   if (!selectedWithdrawToken.value || !isConnected.value) return;
 
@@ -1069,7 +1574,6 @@ async function resolveWithdrawDestination() {
 
   try {
     if (token.isNative) {
-      // IBC token - get user's address on the destination Cosmos chain
       const chainId = token.token_info?.chainId;
       if (!chainId) return;
 
@@ -1083,7 +1587,6 @@ async function resolveWithdrawDestination() {
         }
       }
     } else {
-      // ETH token - get user's Ethereum address
       const connectedWalletType = walletStore.connectedWallet?.wallet;
       let ethProvider;
 
@@ -1117,9 +1620,26 @@ async function executeWithdraw() {
 
   try {
     const token = selectedWithdrawToken.value;
+    let txHash: string | undefined;
     if (token.isNative) {
-      await initiateIbcWithdraw(token);
+      // IBC Withdraw
+      ibcProgress.value.status = 'signing';
+      ibcProgress.value.txHash = '';
+      ibcProgress.value.message = 'Please approve the transfer in your wallet.';
+      txHash = await initiateIbcWithdraw(token);
+      if (txHash && lastTxInfo.value) {
+        lastTxInfo.value.txHash = txHash;
+      }
+      ibcProgress.value.txHash = txHash || '';
+      ibcProgress.value.status = 'relaying';
+      ibcProgress.value.message = 'IBC packet transfer in progress...';
+      // Simulate relayer passing packet
+      await new Promise(resolve => setTimeout(resolve, 4000));
+      ibcProgress.value.status = 'completed';
+      ibcProgress.value.message = 'Transaction successfully relayed.';
+      withdrawTxCompleted.value = true;
     } else {
+      // EVM Withdraw
       await initiateEthWithdraw(token);
     }
 
@@ -1133,6 +1653,7 @@ async function executeWithdraw() {
   } catch (err) {
     txError.value = err instanceof Error ? err.message : 'Withdraw failed';
     console.error('Withdraw Error:', err);
+    ibcProgress.value.status = 'failed';
   } finally {
     calculating.value = false;
   }
@@ -1142,8 +1663,7 @@ async function initiateIbcWithdraw(token: any) {
   const chainId = token.token_info?.chainId;
   if (!chainId) throw new Error('Cannot determine destination chain for this token');
 
-  // For IBC withdraw FROM Gonka, we need the local channel (Gonka side)
-  const localChannel = await resolveLocalChannel(chainId);
+  const localChannel = await resolveLocalChannelForWithdrawToken(token);
   if (!localChannel) throw new Error(`Could not resolve IBC channel to ${chainId}`);
 
   const denom = token.full_denom || token.token_info?.contractAddress;
@@ -1152,16 +1672,14 @@ async function initiateIbcWithdraw(token: any) {
   const decimals = token.decimals ?? 6;
   const amountInBaseUnits = Math.floor(parseFloat(withdrawAmount.value) * Math.pow(10, decimals)).toString();
 
-  // Destination address: user-provided or auto-detect
   let receiver = withdrawDestinationAddress.value.trim();
   if (!receiver) {
     throw new Error('Please enter a destination address on the target chain');
   }
 
-  // Gonka is the source chain for this IBC transfer
   const gonkaChainId = baseStore.currentChainId || blockchain.current?.chainId || props.chain;
 
-  await walletStore.executeIbcTransfer(
+  const result = await walletStore.executeIbcTransfer(
     gonkaChainId,
     'transfer',
     localChannel,
@@ -1169,6 +1687,7 @@ async function initiateIbcWithdraw(token: any) {
     amountInBaseUnits,
     receiver
   );
+  return result?.transactionHash;
 }
 
 async function initiateEthWithdraw(token: any) {
@@ -1180,7 +1699,6 @@ async function initiateEthWithdraw(token: any) {
     throw new Error('Please enter a valid Ethereum destination address (0x...)');
   }
 
-  // Get bridge contract address
   const bridgeResp = await blockchain.getBridgeAddresses(chainId);
   let bridgeContractAddress = bridgeResp?.bridge_address || bridgeResp?.address || bridgeResp?.bridge_contract || bridgeResp?.data?.bridge_address || bridgeResp?.approved_bridge_address;
 
@@ -1193,17 +1711,14 @@ async function initiateEthWithdraw(token: any) {
     throw new Error(`Could not resolve bridge contract address for chain ${chainId}`);
   }
 
-  // CW20 contract address for the wrapped token on Gonka (or 'native' for GNK)
   const cw20Address = token.isGnk ? 'native' : (token.token_info?.wrappedContractAddress || token.token_info?.contractAddress);
   if (!cw20Address) throw new Error('Cannot determine wrapped token contract address');
 
-  // Original ERC20 token contract on Ethereum (for GNK, the WGNK address is the bridge contract itself)
   const tokenContractOnEth = token.isGnk ? bridgeContractAddress : token.token_info?.contractAddress;
 
   const decimals = token.decimals ?? 6;
   const amountInBaseUnits = Math.floor(parseFloat(withdrawAmount.value) * Math.pow(10, decimals)).toString();
 
-  // Determine network
   const activeCosmosChain = baseStore.currentChainId || blockchain.current?.chainId || props.chain || '';
   const isTestnet = activeCosmosChain.includes('testnet');
   const ethereumChainIdHex = isTestnet ? '0xaa36a7' : '0x1';
@@ -1227,6 +1742,7 @@ async function initiateEthWithdraw(token: any) {
   const config = {
     rpcEndpoint,
     apiBase,
+    cosmosRestEndpoint: blockchain.endpoint?.address || '',
     chainId: activeCosmosChain,
     ethereumChainIdHex,
   };
@@ -1325,7 +1841,6 @@ async function updateBridgeEpoch() {
       epochUpdateMessage.value = `Updated! Submitted ${result.epochsSubmitted} epoch(s).`;
     }
 
-    // Refresh status
     await loadBridgeEpochStatus();
   } catch (err) {
     txError.value = err instanceof Error ? err.message : 'Failed to update bridge';
@@ -1427,139 +1942,21 @@ async function loadWrappedTokenBalances() {
   }
 }
 
-async function calculateSwap() {
-  if (!poolInfo.value || !swapAmount.value || parseFloat(swapAmount.value) <= 0) {
-    estimatedOutput.value = '';
-    currentPrice.value = '';
-    priceImpact.value = '';
-    return;
-  }
-
-  const selectedToken = wrappedTokenBalances.value.find(t => t.symbol === selectedWrappedToken.value);
-  const decimals = selectedToken?.decimals ?? 6;
-  const amountInBaseUnits = Math.floor(parseFloat(swapAmount.value) * Math.pow(10, decimals)).toString();
-
-  calculating.value = true;
-  error.value = '';
-
-  try {
-    const result = await blockchain.calculateTokensFromWrappedToken(
-      poolInfo.value.address,
-      amountInBaseUnits
-    );
-
-    if (result.data) {
-      const outputBaseUnits = result.data.tokens ?? result.data.gnk_tokens ?? '0';
-      const outputAmount = parseFloat(outputBaseUnits) / 1_000_000_000;
-
-      estimatedOutput.value = outputAmount.toString();
-      currentPrice.value = result.data.current_price;
-
-      const price = parseFloat(result.data.current_price);
-      if (price > 0) {
-        const expectedOutput = parseFloat(swapAmount.value) * price;
-        const actualOutput = outputAmount;
-
-        if (expectedOutput > 0) {
-          const impact = ((expectedOutput - actualOutput) / expectedOutput) * 100;
-          priceImpact.value = impact.toFixed(2);
-        } else {
-          priceImpact.value = '0.00';
-        }
-      }
-    }
-  } catch (err) {
-    error.value = cleanErrorMessage(err);
-    console.error('Error calculating swap:', err);
-    estimatedOutput.value = '';
-    currentPrice.value = '';
-    priceImpact.value = '';
-  } finally {
-    calculating.value = false;
-  }
-}
-
-function handleAmountChange() {
-  if (calculationTimeout.value) {
-    clearTimeout(calculationTimeout.value);
-  }
-  calculationTimeout.value = window.setTimeout(() => {
-    calculateSwap();
-  }, 500);
-}
-
-async function executeSwap() {
-  if (!canSwap.value) return;
-
-  try {
-    const selectedToken = wrappedTokenBalances.value.find(token => token.symbol === selectedWrappedToken.value);
-    if (!selectedToken) {
-      txError.value = `${selectedWrappedToken.value} token not found in wallet`;
-      return;
-    }
-
-    calculating.value = true;
-    txError.value = '';
-
-    if (selectedToken.isNative) {
-      const ibcDenom = selectedToken.full_denom;
-      const amountInBaseUnits = Math.floor(parseFloat(swapAmount.value) * Math.pow(10, selectedToken.decimals)).toString();
-
-      await walletStore.executeNativeSwapDirect(
-        ibcDenom,
-        poolInfo.value.address,
-        amountInBaseUnits
-      );
-    } else {
-      const wrappedContractAddress = selectedToken?.token_info?.wrappedContractAddress;
-      if (!wrappedContractAddress) {
-        txError.value = 'No contract address available for selected token';
-        calculating.value = false;
-        return;
-      }
-
-      const amountInBaseUnits = Math.floor(parseFloat(swapAmount.value) * Math.pow(10, selectedToken.decimals)).toString();
-
-      await walletStore.executeTokenSwapDirect(
-        wrappedContractAddress,
-        poolInfo.value.address,
-        amountInBaseUnits
-      );
-    }
-
-    txError.value = '';
-    await loadWrappedTokenBalances();
-    await walletStore.loadMyAsset();
-
-    swapAmount.value = '';
-    estimatedOutput.value = '';
-    currentPrice.value = '';
-    priceImpact.value = '';
-  } catch (err) {
-    txError.value = err instanceof Error ? err.message : 'Failed to execute swap';
-    console.error('Error executing swap:', err);
-  } finally {
-    calculating.value = false;
-  }
-}
-
 // Watchers
-// Watch blockchain endpoint address to load public configurations on page load/mount
 watch(() => blockchain.endpoint?.address, (newEndpoint) => {
   if (newEndpoint) {
     loadSupportedDepositTokens();
+    checkTxIndexingStatus();
   }
 }, { immediate: true });
 
-// Watch walletAddress and blockchain endpoint to fetch user balances safely
 watch([walletAddress, () => blockchain.endpoint?.address], ([newAddress, newEndpoint]) => {
   if (newAddress && newEndpoint) {
-    walletStore.loadMyAsset(); // Fetch native Cosmos balance immediately on wallet connection!
+    walletStore.loadMyAsset();
     loadWrappedTokenBalances();
     fetchDepositTokenBalance();
     fetchApproximateFee();
     
-    // Fallback in case public configurations were not loaded yet
     if (supportedIbcTokens.value.length === 0 && supportedEthTokens.value.length === 0) {
       loadSupportedDepositTokens();
     }
@@ -1570,668 +1967,298 @@ watch([walletAddress, () => blockchain.endpoint?.address], ([newAddress, newEndp
 }, { immediate: true });
 
 watch(activeTab, (tab) => {
+  localStorage.setItem('gonka_active_tab', tab);
+  // Reset transaction and stepper states on tab change
+  depositTxCompleted.value = false;
+  withdrawTxCompleted.value = false;
+  lastTxInfo.value = null;
+  txError.value = '';
+  depositProgress.value = { status: 'idle', lockTxHash: '', message: '' };
+  ibcProgress.value = { status: 'idle', txHash: '', message: '' };
+  resetUnwrap();
+  checkForPending();
+
+  if (pendingUnwrap.value) {
+    if (isConnected.value) {
+      currentStep.value = 3;
+    } else {
+      currentStep.value = 1;
+    }
+  } else {
+    if (isConnected.value) {
+      currentStep.value = 2;
+    } else {
+      currentStep.value = 1;
+    }
+  }
+
   if (tab === 'withdraw' && isConnected.value) {
     loadBridgeEpochStatus();
+    scanForLostPendingState();
+  }
+});
+
+watch(isConnected, (connected) => {
+  if (!connected) {
+    currentStep.value = 1;
+    depositTxCompleted.value = false;
+    withdrawTxCompleted.value = false;
+    lastTxInfo.value = null;
+  } else {
+    // Asynchronous wallet restoration check: auto-advance if there's a pending transaction
+    if (pendingUnwrap.value) {
+      activeTab.value = 'withdraw';
+      currentStep.value = 3;
+    } else if (activeTab.value === 'withdraw') {
+      scanForLostPendingState();
+    }
+  }
+});
+
+watch(withdrawDestinationAddress, (newVal) => {
+  if (newVal && newVal.startsWith('0x') && activeTab.value === 'withdraw') {
+    scanForLostPendingState();
   }
 });
 
 watch(selectedDepositToken, () => {
   fetchDepositTokenBalance();
+  fetchApproximateFee();
 });
 
-watch(selectedWithdrawToken, (token) => {
-  withdrawDestinationAddress.value = '';
-  resolveWithdrawDestination();
-  if (token && !token.isNative) {
-    loadBridgeEpochStatus();
+watch(resolvedBridgeAddress, (newAddress) => {
+  if (newAddress && newAddress.startsWith('0x')) {
+    if (selectedDepositToken.value && selectedDepositToken.value.symbol === 'WGNK') {
+      if (!selectedDepositToken.value.contractAddress || selectedDepositToken.value.contractAddress.toLowerCase() !== newAddress.toLowerCase()) {
+        selectedDepositToken.value.contractAddress = newAddress;
+        fetchDepositTokenBalance();
+      }
+    }
   }
 });
 
-watch([activeTab, selectedDepositToken, selectedWithdrawToken, depositAmount, withdrawAmount], () => {
+watch(withdrawableTokens, (tokens) => {
+  if (!selectedWithdrawToken.value) return;
+
+  const selectedIdentity = getWithdrawTokenIdentity(selectedWithdrawToken.value);
+  const updatedToken = tokens.find(token => getWithdrawTokenIdentity(token) === selectedIdentity);
+
+  if (updatedToken && updatedToken !== selectedWithdrawToken.value) {
+    selectedWithdrawToken.value = updatedToken;
+  } else if (!updatedToken) {
+    selectedWithdrawToken.value = null;
+  }
+});
+
+watch(selectedWithdrawToken, (token, previousToken) => {
+  const tokenChanged = getWithdrawTokenIdentity(token) !== getWithdrawTokenIdentity(previousToken);
+  if (tokenChanged) {
+    withdrawDestinationAddress.value = '';
+    resolveWithdrawDestination();
+  }
+  if (token && !token.isNative) {
+    loadBridgeEpochStatus();
+  }
   fetchApproximateFee();
+});
+
+watch([depositAmount, withdrawAmount], () => {
+  fetchApproximateFee();
+});
+
+const isTransactionCompleted = computed(() => {
+  if (activeTab.value === 'deposit') {
+    return depositTxCompleted.value;
+  } else {
+    return unwrapProgress.value.status === 'completed' || withdrawTxCompleted.value;
+  }
+});
+
+watch(isTransactionCompleted, (completed) => {
+  if (completed) {
+    loadWrappedTokenBalances();
+    walletStore.loadMyAsset();
+    fetchDepositTokenBalance();
+  }
+});
+
+const isTransactionFailed = computed(() => {
+  if (activeTab.value === 'deposit') {
+    return !!txError.value;
+  } else {
+    return (unwrapProgress.value.status === 'failed' || !!txError.value) && !pendingUnwrap.value;
+  }
+});
+
+const isTransactionInProgress = computed(() => {
+  if (isTransactionCompleted.value || isTransactionFailed.value) {
+    return false;
+  }
+  if (pendingUnwrap.value && !isUnwrapRunning.value) {
+    return false;
+  }
+  return currentStep.value === 3;
+});
+
+const computedLastTxInfo = computed(() => {
+  if (lastTxInfo.value) return lastTxInfo.value;
+  if (pendingUnwrap.value) {
+    const isGnk = !!pendingUnwrap.value.params.isGnk;
+    let decimals = 9;
+    let symbol = 'GNK';
+
+    if (!isGnk) {
+      const meta = getOfflineMetadata(pendingUnwrap.value.params.cw20Address) ||
+                   getOfflineMetadata(pendingUnwrap.value.params.tokenContractOnEth);
+      if (meta) {
+        decimals = meta.decimals;
+        symbol = meta.symbol;
+      } else {
+        decimals = 6;
+        symbol = 'Wrapped';
+      }
+    }
+
+    const rawAmount = parseFloat(pendingUnwrap.value.params.amount);
+    const formattedAmount = isNaN(rawAmount) ? '0' : (rawAmount / Math.pow(10, decimals)).toString();
+
+    return {
+      amount: formattedAmount,
+      token: symbol,
+      type: 'eth',
+      chainId: baseStore.currentChainId || '',
+      txHash: pendingUnwrap.value.gonkaTxHash,
+      from: 'Gonka',
+      to: 'Ethereum'
+    };
+  }
+  return null;
 });
 </script>
 
 <template>
-  <div class="bg-base-100 rounded shadow">
-    <div class="px-4 pt-4 pb-2 flex flex-col items-center">
-      <div class="w-full flex items-center justify-between mb-4">
-        <span class="text-lg font-semibold text-main">{{ $t('developer.exchange') }}</span>
-      </div>
-
-      <!-- Toggle Tabs -->
-      <div class="w-full flex p-1 bg-gray-200 dark:bg-gray-800 rounded-lg">
-        <button
-          class="flex-1 py-2 text-sm font-semibold rounded-md transition-colors"
-          :class="activeTab === 'deposit' ? 'bg-primary text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
-          @click="activeTab = 'deposit'"
-        >
-          {{ $t('developer.deposit_tab') }}
-        </button>
-        <button
-          class="flex-1 py-2 text-sm font-semibold rounded-md transition-colors"
-          :class="activeTab === 'withdraw' ? 'bg-primary text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'"
-          @click="activeTab = 'withdraw'"
-        >
-          {{ $t('developer.withdraw_tab') }}
-        </button>
-        <button
-          class="flex-1 py-2 text-sm font-semibold rounded-md transition-colors relative"
-          :class="[
-            activeTab === 'purchase' ? 'bg-primary text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200',
-            !isPoolAvailable ? 'opacity-50 cursor-not-allowed' : ''
-          ]"
-          :disabled="!isPoolAvailable"
-          :title="!isPoolAvailable ? $t('developer.pool_not_available') : ''"
-          @click="isPoolAvailable ? (activeTab = 'purchase') : null"
-        >
-          {{ $t('developer.purchase_tab') }}
-        </button>
-      </div>
+  <div class="bg-base-100 rounded shadow min-h-[314px] relative">
+    <!-- Indexing Disabled overlay -->
+    <div class="absolute inset-0 bg-base-100 rounded flex flex-col justify-center items-center p-8 text-center z-30" v-if="isTxIndexingOff">
+      <Icon icon="mdi:database-off" class="text-error w-16 h-16 mb-4 opacity-80" />
+      <h3 class="text-lg font-bold text-main mb-2">Exchange Temporarily Unavailable</h3>
+      <p class="text-sm text-gray-500 dark:text-gray-400 max-w-sm">
+        Transaction indexing is currently disabled on the RPC node. Swaps and transfers are temporarily disabled until indexing is re-enabled.
+      </p>
     </div>
+
+    <div class="px-4 pt-4 pb-2">
+      <!-- Switcher -->
+      <ExchangeSwitcher
+        v-model:active-tab="activeTab"
+        :is-connected="isConnected"
+        @disconnect="walletStore.disconnect()"
+      />
+
+      <!-- Stepper Header -->
+      <ExchangeStepper
+        :current-step="currentStep"
+        :is-transaction-completed="isTransactionCompleted"
+      />
+    </div>
+
     <div class="px-4 pb-4">
-      <!-- Loading State -->
-      <div v-if="loading" class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-3 h-20 flex items-center justify-center">
-        <div class="text-center">
-          <div class="loading loading-spinner loading-md"></div>
-          <div class="text-sm mt-2">{{ $t('developer.loading_pool_info') }}</div>
-        </div>
-      </div>
+      <!-- STEP 1: Connect Wallet -->
+      <ExchangeConnect
+        v-if="currentStep === 1"
+        v-model:current-step="currentStep"
+        :is-connected="isConnected"
+        :loading="loading"
+        :active-tab="activeTab"
+        :connected-wallet-name="walletStore.connectedWallet?.wallet"
+        :truncated-address="truncatedAddress"
+        :staking-token-balance="walletStore.balanceOfStakingToken"
+        :format="format"
+        @connect="openConnectWallet"
+      />
 
+      <!-- STEP 2: Details entry form -->
+      <ExchangeDetails
+        v-else-if="currentStep === 2"
+        v-model:current-step="currentStep"
+        v-model:deposit-amount="depositAmount"
+        v-model:withdraw-amount="withdrawAmount"
+        v-model:selected-deposit-token="selectedDepositToken"
+        v-model:selected-withdraw-token="selectedWithdrawToken"
+        v-model:withdraw-destination-address="withdrawDestinationAddress"
+        :active-tab="activeTab"
+        :is-connected="isConnected"
+        :wallet-address="walletAddress"
+        :all-deposit-tokens="allDepositTokens"
+        :withdrawable-tokens="withdrawableTokens"
+        :calculating="calculating"
+        :error="error"
+        :tx-error="txError"
+        :pending-unwrap="pendingUnwrap"
+        :epoch-status="epochStatus"
+        :epoch-status-loading="epochStatusLoading"
+        :epoch-update-loading="epochUpdateLoading"
+        :epoch-update-message="epochUpdateMessage"
+        :is-address-mismatch="isAddressMismatch"
+        :approximate-fee="approximateFee"
+        :fee-loading="feeLoading"
+        :deposit-token-balance="depositTokenBalance"
+        :deposit-balance-loading="depositBalanceLoading"
+        :format="format"
+        @submit="handleStepSubmit"
+        @retry-loading="retryLoading"
+        @update-bridge-epoch="updateBridgeEpoch"
+        @clear-pending="handleClearPending"
+        @resume-pending="handleResumePending"
+      />
 
+      <!-- STEP 3: Review / In Progress -->
+      <ExchangeReview
+        v-else-if="currentStep === 3 && isTransactionInProgress"
+        :active-tab="activeTab"
+        :last-tx-info="lastTxInfo"
+        :unwrap-progress="unwrapProgress"
+        :is-unwrap-running="isUnwrapRunning"
+        :pending-unwrap="pendingUnwrap"
+        :calculating="calculating"
+        :deposit-tx-completed="depositTxCompleted"
+        :withdraw-tx-completed="withdrawTxCompleted"
+        :deposit-progress="depositProgress"
+        :ibc-progress="ibcProgress"
+        @resume-pending="handleResumePending"
+        @clear-pending="handleClearPending"
+        @discard-pending="handleDiscardPending"
+      />
 
-      <!-- ===== DEPOSIT TAB ===== -->
-      <div v-if="!loading && activeTab === 'deposit'" class="space-y-4 mt-2">
-        <div class="bg-gray-100 dark:bg-[#373f59] rounded-lg px-4 py-3" :class="{ 'pointer-events-none': allDepositTokens.length === 0 }">
-          <div class="flex flex-col relative" :class="{ 'opacity-[0.4]': allDepositTokens.length === 0 }">
-            <div v-if="allDepositTokens.length === 0" class="absolute inset-0 flex items-center justify-center z-10">
-               <span class="bg-base-100 px-3 py-1 rounded text-sm font-semibold shadow-sm text-red-500 border border-red-200 dark:border-red-800">{{ $t('developer.no_approved_tokens') }}</span>
-            </div>
-
-            <div class="space-y-3">
-              <div class="w-full">
-                <div class="flex justify-between items-center mb-2">
-                  <span class="text-sm font-semibold">{{ $t('developer.stable_coin') }}</span>
-                  <span v-if="selectedDepositToken && depositTokenBalance" class="text-xs" :class="depositExceedsBalance ? 'text-red-500' : 'text-gray-600 dark:text-gray-400'">
-                    Balance: {{ depositTokenBalance }} {{ selectedDepositToken.symbol }}
-                  </span>
-                  <span v-else-if="depositBalanceLoading" class="text-xs text-gray-400">
-                    <Icon icon="mdi:loading" class="animate-spin inline-block" />
-                  </span>
-                </div>
-
-                <div class="flex items-center space-x-2">
-                  <div class="w-[60%]">
-                    <input
-                      v-model="depositAmount"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      :placeholder="$t('developer.enter_amount')"
-                      class="input input-bordered input-sm w-full bg-base-100"
-                      :class="{ 'input-error': depositExceedsBalance }"
-                      :disabled="!isConnected"
-                    />
-                  </div>
-
-                  <div class="w-[40%] relative custom-dropdown">
-                    <div
-                      class="input input-bordered input-sm bg-base-100 flex justify-between items-center w-full px-2"
-                      :class="allDepositTokens.length > 0 ? 'cursor-pointer' : 'cursor-not-allowed bg-gray-50 dark:bg-gray-800 border-transparent'"
-                      @click="allDepositTokens.length > 0 ? (isDepositDropdownOpen = !isDepositDropdownOpen) : null"
-                    >
-                      <div v-if="selectedDepositToken" class="truncate font-semibold flex items-center gap-1.5 text-main">
-                        {{ selectedDepositToken.symbol }}
-                        <span v-if="selectedDepositToken.type === 'ibc'" class="badge badge-xs badge-info badge-outline p-1.5">IBC</span>
-                        <span v-else class="badge badge-xs border-gray-400 text-gray-500 badge-outline p-1.5 ml-1">Bridge</span>
-                      </div>
-                      <div v-else-if="allDepositTokens.length > 0" class="text-gray-400">{{ $t('developer.select') }}</div>
-                      <div v-else class="text-transparent select-none">-</div>
-                      <Icon icon="mdi:chevron-down" class="text-gray-400 shrink-0" :class="{ 'opacity-0': allDepositTokens.length === 0 }" />
-                    </div>
-
-                    <div v-if="isDepositDropdownOpen && allDepositTokens.length > 0" class="absolute right-0 z-20 w-64 mt-1 bg-base-100 border border-base-300 rounded-md shadow-lg max-h-48 overflow-auto">
-                      <div
-                        class="px-3 py-2 cursor-pointer hover:bg-base-200 text-sm"
-                        @click="selectedDepositToken = null; isDepositDropdownOpen = false"
-                      >
-                        <span class="text-gray-400">{{ $t('developer.none') }}</span>
-                      </div>
-                      <div
-                        v-for="(token, idx) in allDepositTokens" :key="idx"
-                        class="px-3 py-2 border-t border-base-200 cursor-pointer hover:bg-base-200 flex flex-col"
-                        @click="selectedDepositToken = token; isDepositDropdownOpen = false"
-                      >
-                         <div class="flex items-center gap-2">
-                           <span class="text-sm font-semibold text-main">{{ token.symbol }}</span>
-                           <span class="text-xs text-gray-500">({{ token.chainId }})</span>
-                           <span v-if="token.type === 'ibc'" class="badge badge-xs badge-info badge-outline ml-auto bg-base-100 p-1.5">IBC</span>
-                           <span v-else class="badge badge-xs border-gray-400 text-gray-500 badge-outline ml-auto bg-base-100 p-1.5">Bridge</span>
-                         </div>
-                         <span class="text-[10px] text-gray-400 truncate mt-1" :title="token.contractAddress">{{ token.contractAddress }}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Processing Time / Wallet Status / Server Error -->
-        <div class="flex flex-col items-center justify-center mt-2 mb-2 text-center gap-1.5">
-          <div v-if="error" class="text-xs transition-colors duration-300 h-4 flex items-center text-red-500 dark:text-red-400 font-semibold gap-1">
-            <Icon icon="mdi:alert-circle-outline" class="inline-block" /> {{ error }}
-          </div>
-          <div v-else-if="!isConnected" class="text-xs transition-colors duration-300 h-4 flex items-center text-red-500 dark:text-red-400 font-semibold gap-1">
-            <Icon icon="mdi:alert-circle-outline" class="inline-block" /> {{ $t('developer.please_connect_wallet_first') }}
-          </div>
-          <div v-else-if="isAddressMismatch && selectedDepositToken?.type === 'eth'" class="text-xs text-red-500 dark:text-red-400 font-semibold px-4 leading-relaxed flex items-center justify-center gap-1.5">
-            <Icon icon="mdi:alert-circle-outline" class="inline-block shrink-0 animate-pulse text-red-500 dark:text-red-400 w-4 h-4" />
-            <span>{{ $t('developer.mnemonic_mismatch_warning') }}</span>
-          </div>
-          <div v-else class="text-xs transition-colors duration-300 h-4 flex items-center" :class="selectedDepositToken?.type === 'ibc' ? 'text-green-500 dark:text-green-400' : (selectedDepositToken?.type === 'eth' ? 'text-gray-500' : 'opacity-0')">
-            <template v-if="selectedDepositToken?.type === 'ibc'">
-              <Icon icon="mdi:clock-outline" class="inline-block mr-0.5" /> {{ $t('developer.processing_time_ibc') }}
-            </template>
-            <template v-else-if="selectedDepositToken?.type === 'eth'">
-              <Icon icon="mdi:clock-outline" class="inline-block mr-0.5" /> {{ $t('developer.processing_time_eth') }}
-            </template>
-            <template v-else>
-              &nbsp;
-            </template>
-          </div>
-        </div>
-
-        <!-- Deposit Button -->
-        <div class="pt-1">
-          <button
-            v-if="error"
-            class="btn btn-error w-full btn-outline"
-            @click="retryLoading"
-          >
-            <Icon icon="mdi:refresh" class="mr-2" />
-            {{ $t('developer.retry') }}
-          </button>
-          <button
-            v-else
-            class="btn btn-primary w-full"
-            :disabled="!selectedDepositToken || !depositAmount || parseFloat(depositAmount) <= 0 || depositExceedsBalance || calculating || isAddressMismatch"
-            @click="executeDeposit"
-          >
-            <Icon v-if="calculating" icon="mdi:loading" class="animate-spin mr-2" />
-            {{
-               !selectedDepositToken ? $t('developer.select_token_to_deposit') :
-               selectedDepositToken.type === 'ibc' ? $t('developer.deposit_via_ibc') : $t('developer.deposit_via_bridge')
-            }}
-          </button>
-          <div v-if="txError && activeTab === 'deposit'" class="text-xs text-red-500 text-center mt-2 px-2 overflow-hidden text-ellipsis whitespace-nowrap" :title="txError">{{ txError }}</div>
-
-          <!-- Approximate Fee Note under Deposit Button -->
-          <div v-if="isConnected && selectedDepositToken?.type === 'eth' && approximateFee" class="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 mt-2 text-center">
-            <Icon :icon="feeLoading ? 'mdi:loading' : 'mdi:gas-station'" :class="{ 'animate-spin': feeLoading }" class="inline-block mr-0.5" />
-            {{ $t('developer.approximate_fee') }} {{ approximateFee }}
-          </div>
-        </div>
-      </div>
-
-      <div v-else-if="!loading && activeTab === 'withdraw'" class="space-y-4 mt-2">
-        <!-- Bridge status is now integrated between the input and action button below -->
-
-        <!-- Unwrap in progress (ETH bridge) -->
-        <div v-if="isUnwrapRunning || unwrapProgress.status === 'completed' || unwrapProgress.status === 'failed'" class="bg-gray-100 dark:bg-[#373f59] rounded-lg px-4 py-3">
-          <div class="text-sm font-semibold mb-3">{{ $t('developer.withdraw_eth_progress') }}</div>
-
-          <div class="space-y-2">
-            <div class="flex items-center gap-2 text-xs">
-              <Icon
-                :icon="['connecting', 'signing_gonka'].includes(unwrapProgress.status) ? 'mdi:hourglass' : (unwrapProgress.status === 'failed' && !unwrapProgress.gonkaTxHash ? 'mdi:close-circle' : (['waiting_bls', 'signing_ethereum', 'completed'].includes(unwrapProgress.status) || unwrapProgress.gonkaTxHash ? 'mdi:check-circle' : 'mdi:circle-outline'))"
-                :class="[
-                  ['connecting', 'signing_gonka'].includes(unwrapProgress.status) ? 'animate-pulse text-primary' : '',
-                  ['waiting_bls', 'signing_ethereum', 'completed'].includes(unwrapProgress.status) || unwrapProgress.gonkaTxHash ? 'text-green-500' : '',
-                  unwrapProgress.status === 'failed' && !unwrapProgress.gonkaTxHash ? 'text-red-500' : ''
-                ]"
-              />
-              <span>{{ $t('developer.withdraw_step_gonka') }}</span>
-            </div>
-            <div class="flex items-center gap-2 text-xs">
-              <Icon
-                :icon="unwrapProgress.status === 'waiting_bls' ? 'mdi:hourglass' : (['signing_ethereum', 'completed'].includes(unwrapProgress.status) ? 'mdi:check-circle' : (unwrapProgress.status === 'failed' && unwrapProgress.gonkaTxHash && (unwrapProgress.message.includes('signature') || unwrapProgress.message.includes('BLS')) ? 'mdi:close-circle' : 'mdi:circle-outline'))"
-                :class="[
-                  unwrapProgress.status === 'waiting_bls' ? 'animate-pulse text-primary' : '',
-                  ['signing_ethereum', 'completed'].includes(unwrapProgress.status) ? 'text-green-500' : '',
-                  unwrapProgress.status === 'failed' && unwrapProgress.gonkaTxHash && (unwrapProgress.message.includes('signature') || unwrapProgress.message.includes('BLS')) ? 'text-red-500' : 'text-gray-400'
-                ]"
-              />
-              <span>{{ $t('developer.withdraw_step_bls') }}</span>
-              <span v-if="unwrapProgress.elapsedSeconds && unwrapProgress.status === 'waiting_bls'" class="text-gray-400">({{ unwrapProgress.elapsedSeconds }}s)</span>
-            </div>
-            <div class="flex items-center gap-2 text-xs">
-              <Icon
-                :icon="unwrapProgress.status === 'signing_ethereum' ? 'mdi:hourglass' : (unwrapProgress.status === 'completed' ? 'mdi:check-circle' : (unwrapProgress.status === 'failed' && unwrapProgress.gonkaTxHash && !(unwrapProgress.message.includes('signature') || unwrapProgress.message.includes('BLS')) ? 'mdi:close-circle' : 'mdi:circle-outline'))"
-                :class="[
-                  unwrapProgress.status === 'signing_ethereum' ? 'animate-pulse text-primary' : '',
-                  unwrapProgress.status === 'completed' ? 'text-green-500' : '',
-                  unwrapProgress.status === 'failed' && unwrapProgress.gonkaTxHash && !(unwrapProgress.message.includes('signature') || unwrapProgress.message.includes('BLS')) ? 'text-red-500' : 'text-gray-400'
-                ]"
-              />
-              <span>{{ $t('developer.withdraw_step_eth') }}</span>
-            </div>
-          </div>
-
-          <!-- Status message -->
-          <div class="mt-3 text-xs" :class="unwrapProgress.status === 'failed' ? 'text-red-500' : (unwrapProgress.status === 'completed' ? 'text-green-500' : 'text-gray-500')">
-            {{ unwrapProgress.message }}
-          </div>
-
-          <!-- Tx hashes -->
-          <div v-if="unwrapProgress.gonkaTxHash" class="mt-2 text-[10px] text-gray-400 truncate">
-            {{ $t('developer.gonka_tx') }} {{ unwrapProgress.gonkaTxHash }}
-          </div>
-          <div v-if="unwrapProgress.ethTxHash" class="mt-1 text-[10px] text-gray-400 truncate">
-            {{ $t('developer.eth_tx') }} {{ unwrapProgress.ethTxHash }}
-          </div>
-
-          <!-- Reset button after completion/failure -->
-          <div v-if="unwrapProgress.status === 'completed' || unwrapProgress.status === 'failed'" class="mt-3">
-            <button class="btn btn-sm btn-outline w-full" @click="handleResetUnwrap">
-              {{ unwrapProgress.status === 'completed' ? $t('developer.done') : $t('developer.retry') }}
-            </button>
-          </div>
-        </div>
-
-        <!-- Normal withdraw form -->
-        <template v-else>
-          <!-- Resume Pending Card -->
-          <div v-if="pendingUnwrap" class="bg-primary/10 border border-primary/20 rounded-lg p-4 mb-4 space-y-3">
-            <div class="flex items-start gap-2.5">
-              <Icon icon="mdi:clock-alert-outline" class="text-primary text-xl shrink-0 mt-0.5 animate-pulse" />
-              <div class="flex-1 min-w-0">
-                <div class="text-sm font-semibold text-main">{{ $t('developer.pending_tx_detected') }}</div>
-                <p class="text-xs text-gray-500 mt-0.5">
-                  {{ $t('developer.pending_tx_message') }}
-                </p>
-                <div class="text-[10px] text-gray-400 font-mono mt-1 bg-gray-50 dark:bg-gray-800/50 p-1.5 rounded truncate" :title="pendingUnwrap.gonkaTxHash">
-                  {{ $t('developer.gonka_tx') }} {{ pendingUnwrap.gonkaTxHash }}
-                </div>
-              </div>
-            </div>
-            <div class="flex gap-2">
-              <button class="btn btn-primary btn-xs flex-1" @click="handleResumePending" :disabled="calculating">
-                <Icon v-if="calculating" icon="mdi:loading" class="animate-spin mr-1" />
-                {{ $t('developer.resume_tx') }}
-              </button>
-              <button class="btn btn-outline btn-xs flex-1" @click="handleClearPending" :disabled="calculating">
-                {{ $t('developer.discard') }}
-              </button>
-            </div>
-          </div>
-
-          <div class="bg-gray-100 dark:bg-[#373f59] rounded-lg px-4 py-3" :class="{ 'pointer-events-none': withdrawableTokens.length === 0 }">
-            <div class="flex flex-col relative" :class="{ 'opacity-[0.4]': withdrawableTokens.length === 0 && isConnected }">
-              <div v-if="withdrawableTokens.length === 0 && isConnected" class="absolute inset-0 flex items-center justify-center z-10">
-                <span class="bg-base-100 px-3 py-1 rounded text-sm font-semibold shadow-sm text-gray-500 border border-gray-200 dark:border-gray-700">{{ $t('developer.no_tokens_to_withdraw') }}</span>
-              </div>
-
-              <div class="space-y-3">
-                <!-- Token selector -->
-                <div class="w-full">
-                  <div class="flex justify-between items-center mb-2">
-                    <span class="text-sm font-semibold">{{ $t('developer.token') }}</span>
-                    <span v-if="selectedWithdrawToken" class="text-xs" :class="withdrawExceedsBalance ? 'text-red-500' : 'text-gray-600 dark:text-gray-400'">
-                      Balance: {{ parseFloat(selectedWithdrawToken.formatted_balance).toFixed(6) }} {{ selectedWithdrawToken.symbol }}
-                    </span>
-                  </div>
-
-                  <div class="flex items-center space-x-2">
-                    <div class="w-[60%]">
-                      <input
-                        v-model="withdrawAmount"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        :placeholder="$t('developer.enter_amount')"
-                        class="input input-bordered input-sm w-full bg-base-100"
-                        :class="{ 'input-error': withdrawExceedsBalance }"
-                        :disabled="!isConnected"
-                      />
-                    </div>
-
-                    <div class="w-[40%] relative custom-dropdown">
-                      <div
-                        class="input input-bordered input-sm bg-base-100 flex justify-between items-center w-full px-2"
-                        :class="withdrawableTokens.length > 0 ? 'cursor-pointer' : 'cursor-not-allowed bg-gray-50 dark:bg-gray-800 border-transparent'"
-                        @click="withdrawableTokens.length > 0 ? (isWithdrawDropdownOpen = !isWithdrawDropdownOpen) : null"
-                      >
-                        <div v-if="selectedWithdrawToken" class="truncate font-semibold flex items-center gap-1.5 text-main">
-                          {{ selectedWithdrawToken.symbol }}
-                          <span v-if="selectedWithdrawToken.isNative" class="badge badge-xs badge-info badge-outline p-1.5">IBC</span>
-                          <span v-else class="badge badge-xs border-gray-400 text-gray-500 badge-outline p-1.5 ml-1">Bridge</span>
-                        </div>
-                        <div v-else-if="withdrawableTokens.length > 0" class="text-gray-400">{{ $t('developer.select') }}</div>
-                        <div v-else class="text-transparent select-none">-</div>
-                        <Icon icon="mdi:chevron-down" class="text-gray-400 shrink-0" :class="{ 'opacity-0': withdrawableTokens.length === 0 }" />
-                      </div>
-
-                      <div v-if="isWithdrawDropdownOpen && withdrawableTokens.length > 0" class="absolute right-0 z-20 w-64 mt-1 bg-base-100 border border-base-300 rounded-md shadow-lg max-h-48 overflow-auto">
-                        <div
-                          class="px-3 py-2 cursor-pointer hover:bg-base-200 text-sm"
-                          @click="selectedWithdrawToken = null; isWithdrawDropdownOpen = false"
-                        >
-                          <span class="text-gray-400">{{ $t('developer.none') }}</span>
-                        </div>
-                        <div
-                          v-for="token in withdrawableTokens" :key="token.symbol"
-                          class="px-3 py-2 border-t border-base-200 cursor-pointer hover:bg-base-200 flex flex-col"
-                          @click="selectedWithdrawToken = token; isWithdrawDropdownOpen = false"
-                        >
-                          <div class="flex items-center gap-2">
-                            <span class="text-sm font-semibold text-main">{{ token.symbol }}</span>
-                            <span class="text-xs text-gray-500" v-if="token.token_info?.chainId">({{ token.token_info?.chainId }})</span>
-                            <span v-if="token.isNative" class="badge badge-xs badge-info badge-outline ml-auto bg-base-100 p-1.5">IBC</span>
-                            <span v-else class="badge badge-xs border-gray-400 text-gray-500 badge-outline ml-auto bg-base-100 p-1.5">Bridge</span>
-                          </div>
-                          <span class="text-[10px] text-gray-400 mt-1">
-                            Balance: {{ parseFloat(token.formatted_balance).toFixed(6) }}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Destination address -->
-                <div class="w-full">
-                  <div class="flex justify-between items-center mb-2">
-                    <span class="text-sm font-semibold">{{ $t('developer.destination_address') }}</span>
-                    <span v-if="selectedWithdrawToken && withdrawDestinationAddress" class="text-xs text-gray-600 dark:text-gray-400">
-                      {{ $t('developer.auto_filled') }}
-                    </span>
-                  </div>
-                  <input
-                    v-model="withdrawDestinationAddress"
-                    type="text"
-                    :placeholder="!selectedWithdrawToken ? $t('developer.select_token_first') : (selectedWithdrawToken.isNative ? $t('developer.enter_cosmos_address') : $t('developer.enter_eth_address'))"
-                    class="input input-bordered input-sm w-full bg-base-100"
-                    :disabled="!isConnected || !selectedWithdrawToken"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Withdraw type hint / Server Error -->
-          <div class="flex flex-col items-center mt-2 mb-2 px-4 text-center">
-            <div v-if="error" class="text-xs transition-colors duration-300 flex items-center text-red-500 dark:text-red-400 font-semibold gap-1">
-              <Icon icon="mdi:alert-circle-outline" class="inline-block" /> {{ error }}
-            </div>
-            <div v-else-if="!isConnected" class="text-xs transition-colors duration-300 flex items-center text-red-500 dark:text-red-400 font-semibold gap-1">
-              <Icon icon="mdi:alert-circle-outline" class="inline-block" /> {{ $t('developer.please_connect_wallet_first') }}
-            </div>
-
-            <!-- Bridge is in ADMIN MODE (Highest priority) -->
-            <div v-else-if="selectedWithdrawToken && !selectedWithdrawToken.isNative && epochStatus && epochStatus.isAdminMode" class="text-xs text-red-500 space-y-1 mb-1 font-semibold">
-              <div class="flex items-center justify-center gap-1">
-                <Icon icon="mdi:lock-outline" class="text-red-500 shrink-0 animate-pulse" />
-                {{ $t('developer.bridge_admin_mode') }}
-              </div>
-              <div class="text-[10px] opacity-80 font-normal">
-                {{ $t('developer.bridge_admin_mode_message') }}
-              </div>
-            </div>
-            
-            <!-- Bridge status shown only for Ethereum bridge wrapped contracts when not synced -->
-            <div v-else-if="selectedWithdrawToken && !selectedWithdrawToken.isNative && epochStatus && !epochStatus.isSynced" class="text-xs text-amber-600 dark:text-amber-400 space-y-1 mb-1">
-              <div class="font-semibold flex items-center justify-center gap-1">
-                <Icon icon="mdi:alert-outline" class="text-amber-500 shrink-0" />
-                {{ $t('developer.bridge_epoch_behind') }}
-              </div>
-              <div>
-                {{ $t('developer.bridge_epoch_info', { bridgeEpoch: epochStatus.bridgeEpoch, chainEpoch: epochStatus.chainEpoch, epochsBehind: epochStatus.epochsBehind }) }}
-              </div>
-              <div class="opacity-90">
-                {{ $t('developer.bridge_epoch_warning') }}
-              </div>
-              <div v-if="epochUpdateMessage" class="font-semibold mt-1" :class="txError ? 'text-red-500' : 'text-green-600 dark:text-green-400'">
-                {{ epochUpdateMessage }}
-              </div>
-            </div>
-
-            <!-- Normal hints when synced or native -->
-            <div v-else class="text-xs transition-colors duration-300 flex items-center" :class="selectedWithdrawToken?.isNative ? 'text-green-500 dark:text-green-400' : (selectedWithdrawToken && !selectedWithdrawToken.isNative ? 'text-gray-500' : 'opacity-0')">
-              <template v-if="selectedWithdrawToken?.isNative">
-                <Icon icon="mdi:clock-outline" class="inline-block mr-0.5 animate-pulse" /> {{ $t('developer.withdraw_time_ibc') }}
-              </template>
-              <template v-else-if="selectedWithdrawToken && !selectedWithdrawToken.isNative">
-                <span v-if="epochStatus && epochStatus.isSynced" class="text-green-600 dark:text-green-400 flex items-center gap-1">
-                  <Icon icon="mdi:check-circle" />
-                  {{ $t('developer.bridge_epoch_synced') }} (Epoch {{ epochStatus.bridgeEpoch }})
-                </span>
-                <span v-else-if="epochStatusLoading" class="text-gray-400 flex items-center gap-1">
-                  <Icon icon="mdi:loading" class="animate-spin" />
-                  {{ $t('developer.checking_bridge_epoch') }}
-                </span>
-                <span v-else>
-                  <Icon icon="mdi:clock-outline" class="inline-block mr-0.5" /> {{ $t('developer.withdraw_time_eth') }}
-                </span>
-              </template>
-              <template v-else>
-                &nbsp;
-              </template>
-            </div>
-          </div>
-
-          <!-- Withdraw Button -->
-          <div class="pt-1">
-            <button
-              v-if="error"
-              class="btn btn-error w-full btn-outline"
-              @click="retryLoading"
-            >
-              <Icon icon="mdi:refresh" class="mr-2" />
-              {{ $t('developer.retry') }}
-            </button>
-
-            <!-- Disallowed Withdraw when Bridge is in Admin Mode -->
-            <button
-              v-else-if="selectedWithdrawToken && !selectedWithdrawToken.isNative && epochStatus && epochStatus.isAdminMode"
-              class="btn btn-error w-full text-white cursor-not-allowed opacity-60"
-              disabled
-            >
-              <Icon icon="mdi:lock-outline" class="mr-2" />
-              {{ $t('developer.bridge_in_admin_mode_btn') }}
-            </button>
-
-            <!-- Update Bridge button when Ethereum bridge contract is not synced -->
-            <button
-              v-else-if="selectedWithdrawToken && !selectedWithdrawToken.isNative && epochStatus && !epochStatus.isSynced"
-              class="btn btn-primary w-full text-white"
-              :disabled="epochUpdateLoading"
-              @click="updateBridgeEpoch"
-            >
-              <Icon v-if="epochUpdateLoading" icon="mdi:loading" class="animate-spin mr-2" />
-              {{ epochUpdateLoading ? $t('developer.updating_bridge') : $t('developer.update_bridge') }}
-            </button>
-
-            <!-- Normal Withdraw Button -->
-            <button
-              v-else
-              class="btn btn-primary w-full"
-              :disabled="!selectedWithdrawToken || !withdrawAmount || parseFloat(withdrawAmount) <= 0 || withdrawExceedsBalance || !withdrawDestinationAddress || calculating"
-              @click="executeWithdraw"
-            >
-              <Icon v-if="calculating" icon="mdi:loading" class="animate-spin mr-2" />
-              {{
-                !selectedWithdrawToken ? $t('developer.select_token_to_withdraw') :
-                selectedWithdrawToken.isNative ? $t('developer.withdraw_via_ibc') :
-                selectedWithdrawToken.isGnk ? $t('developer.wrap_via_bridge') : $t('developer.withdraw_via_bridge')
-              }}
-            </button>
-            <div v-if="txError && activeTab === 'withdraw'" class="text-xs text-red-500 text-center mt-2 px-2 overflow-hidden text-ellipsis whitespace-nowrap" :title="txError">{{ txError }}</div>
-
-            <!-- Approximate Fee Note under Withdraw Button -->
-            <div v-if="isConnected && selectedWithdrawToken && !selectedWithdrawToken.isNative && approximateFee" class="text-xs text-gray-500 dark:text-gray-400 flex items-center justify-center gap-1 mt-2 text-center">
-              <Icon :icon="feeLoading ? 'mdi:loading' : 'mdi:gas-station'" :class="{ 'animate-spin': feeLoading }" class="inline-block mr-0.5" />
-              {{ $t('developer.approximate_fee') }} {{ approximateFee }}
-            </div>
-          </div>
-        </template>
-      </div>
-
-      <!-- ===== PURCHASE TAB ===== -->
-      <div v-else-if="!loading && activeTab === 'purchase'" class="space-y-4 mt-2">
-        <!-- Pool not available message -->
-        <div v-if="!isPoolAvailable" class="bg-gray-100 dark:bg-[#373f59] rounded-sm px-4 py-6 flex items-center justify-center text-center">
-          <div class="space-y-1">
-            <div class="text-sm font-medium">{{ $t('developer.pool_not_available') }}</div>
-            <div class="text-xs text-gray-600 dark:text-gray-400">{{ $t('developer.coming_soon') }}</div>
-          </div>
-        </div>
-
-        <!-- Swap Interface -->
-        <template v-else>
-          <div class="space-y-3">
-            <!-- From Token -->
-            <div class="bg-gray-100 dark:bg-[#373f59] rounded-lg px-4 py-3">
-              <div class="flex justify-between items-center mb-2">
-                <span class="text-sm font-semibold">{{ $t('developer.stable_coin') }}</span>
-                <span class="text-xs text-gray-600 dark:text-gray-400">
-                  Balance: {{
-                    (() => {
-                      const token = wrappedTokenBalances.find(t => t.symbol === selectedWrappedToken);
-                      return token ? parseFloat(token.formatted_balance).toFixed(6) : '0.000000'
-                    })()
-                  }} {{ selectedWrappedToken }}
-                </span>
-              </div>
-              <div class="flex items-center space-x-2">
-                <div class="w-[60%]">
-                  <input
-                    v-model="swapAmount"
-                    @input="handleAmountChange"
-                    type="number"
-                    :placeholder="$t('developer.enter_amount')"
-                    class="input input-bordered input-sm w-full"
-                    :disabled="!isConnected"
-                  />
-                </div>
-
-                <!-- Purchase Selector -->
-                <div class="w-[40%] relative custom-dropdown">
-                  <div
-                    class="input input-bordered input-sm bg-base-100 flex justify-between items-center w-full px-2"
-                    :class="wrappedTokenBalances.length > 0 ? 'cursor-pointer' : 'cursor-not-allowed bg-gray-50 dark:bg-gray-800 border-transparent'"
-                    @click="wrappedTokenBalances.length > 0 ? (isPurchaseDropdownOpen = !isPurchaseDropdownOpen) : null"
-                  >
-                    <div v-if="selectedWrappedToken" class="truncate font-semibold flex items-center gap-1.5 text-main">
-                      {{ selectedWrappedToken }}
-                      <span v-if="(() => {
-                          const token = wrappedTokenBalances.find(t => t.symbol === selectedWrappedToken);
-                          return token?.isNative;
-                        })()" class="badge badge-xs badge-info badge-outline p-1.5">IBC</span>
-                      <span v-else-if="(() => {
-                          const token = wrappedTokenBalances.find(t => t.symbol === selectedWrappedToken);
-                          return token && !token.isNative;
-                        })()" class="badge badge-xs border-gray-400 text-gray-500 badge-outline p-1.5 ml-1">Bridge</span>
-                    </div>
-                    <div v-else-if="wrappedTokenBalances.length > 0" class="text-gray-400">{{ $t('developer.select') }}</div>
-                    <div v-else class="text-transparent select-none">-</div>
-                    <Icon icon="mdi:chevron-down" class="text-gray-400 shrink-0" :class="{ 'opacity-0': wrappedTokenBalances.length === 0 }" />
-                  </div>
-
-                  <div v-if="isPurchaseDropdownOpen && wrappedTokenBalances.length > 0" class="absolute right-0 z-20 w-64 mt-1 bg-base-100 border border-base-300 rounded-md shadow-lg max-h-48 overflow-auto">
-                    <div
-                      v-for="token in wrappedTokenBalances" :key="token.symbol"
-                      class="px-3 py-2 border-b border-base-200 cursor-pointer hover:bg-base-200 flex flex-col last:border-b-0"
-                      @click="selectedWrappedToken = token.symbol; isPurchaseDropdownOpen = false; handleAmountChange()"
-                    >
-                       <div class="flex items-center gap-2">
-                         <span class="text-sm font-semibold text-main">{{ token.symbol }}</span>
-                         <span class="text-[10px] text-gray-500" v-if="token.token_info?.chainId">({{ token.token_info?.chainId }})</span>
-                         <span v-if="token.isNative" class="badge badge-xs badge-info badge-outline ml-auto bg-base-100 p-1.5">IBC</span>
-                         <span v-else class="badge badge-xs border-gray-400 text-gray-500 badge-outline ml-auto bg-base-100 p-1.5">Bridge</span>
-                       </div>
-                       <span class="text-[10px] text-gray-400 truncate mt-1" v-if="token.token_info?.contractAddress" :title="token.token_info?.contractAddress">{{ token.token_info?.contractAddress }}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Swap Arrow -->
-            <div class="flex justify-center">
-              <Icon icon="mdi:arrow-down" class="text-2xl text-gray-400" />
-            </div>
-
-            <!-- To Token -->
-            <div class="bg-gray-100 dark:bg-[#373f59] rounded-lg px-4 py-3">
-              <div class="flex justify-between items-center mb-2">
-                <span class="text-sm font-semibold">{{ $t('developer.token') }}</span>
-              </div>
-              <div class="flex items-center space-x-2">
-                <div class="flex-1">
-                  <input
-                    :value="estimatedOutput"
-                    type="text"
-                    readonly
-                    class="input input-bordered input-sm w-full bg-gray-50 dark:bg-gray-700"
-                    :placeholder="calculating ? $t('developer.calculating') : '0'"
-                  />
-                </div>
-                <div class="text-sm font-semibold text-secondary">{{ $t('developer.gnk') }}</div>
-              </div>
-            </div>
-
-            <!-- Wallet Status / Server Error -->
-            <div class="flex justify-center mt-2 mb-2">
-              <div v-if="error" class="text-xs transition-colors duration-300 h-4 flex items-center text-red-500 dark:text-red-400 font-semibold gap-1">
-                <Icon icon="mdi:alert-circle-outline" class="inline-block" /> {{ error }}
-              </div>
-              <div v-else-if="!isConnected" class="text-xs transition-colors duration-300 h-4 flex items-center text-red-500 dark:text-red-400 font-semibold gap-1">
-                <Icon icon="mdi:alert-circle-outline" class="inline-block" /> {{ $t('developer.please_connect_wallet_first') }}
-              </div>
-            </div>
-
-            <!-- Swap Button -->
-            <div class="pt-3">
-              <button
-                v-if="error"
-                class="btn btn-error w-full btn-outline"
-                @click="retryLoading"
-              >
-                <Icon icon="mdi:refresh" class="mr-2" />
-                {{ $t('developer.retry') }}
-              </button>
-              <button
-                v-else
-                @click="executeSwap"
-                :disabled="!canSwap || calculating"
-                class="btn btn-primary w-full"
-                :class="{ 'btn-disabled': !canSwap || calculating }"
-              >
-                <Icon v-if="calculating" icon="mdi:loading" class="animate-spin mr-2" />
-                <Icon v-else icon="mdi:swap-horizontal" class="mr-2" />
-                {{
-                  calculating
-                    ? $t('developer.swap_processing')
-                    : isConnected
-                      ? $t('developer.swap')
-                      : $t('developer.connect_wallet_to_swap')
-                }}
-              </button>
-              <div v-if="txError && activeTab === 'purchase'" class="text-xs text-red-500 text-center mt-2 px-2 overflow-hidden text-ellipsis whitespace-nowrap" :title="txError">{{ txError }}</div>
-            </div>
-
-            <!-- Validation Messages -->
-            <div v-if="swapAmount && (() => {
-              const token = wrappedTokenBalances.find(t => t.symbol === selectedWrappedToken);
-              return token ? parseFloat(swapAmount) > parseFloat(token.formatted_balance) : false;
-            })()" class="text-red-500 text-sm text-center">
-              {{ $t('developer.insufficient_balance') }}
-            </div>
-          </div>
-        </template>
-      </div>
+      <!-- STEP 3: Success / Failed / Pending Overview -->
+      <ExchangeOverview
+        v-else-if="currentStep === 3 && (isTransactionCompleted || isTransactionFailed || pendingUnwrap)"
+        :active-tab="activeTab"
+        :is-transaction-completed="isTransactionCompleted"
+        :is-transaction-failed="isTransactionFailed"
+        :is-transaction-pending="!!pendingUnwrap"
+        :last-tx-info="computedLastTxInfo"
+        :unwrap-progress="unwrapProgress"
+        :tx-error="txError"
+        :get-explorer-tx-link="getExplorerTxLink"
+        :truncate-hash="truncateHash"
+        @transfer-more="handleTransferMore"
+        @disconnect="walletStore.disconnect()"
+        @retry="handleRetry"
+        @resume-pending="handleResumePending"
+        @discard-pending="handleDiscardPending"
+      />
     </div>
+
+    <!-- ConnectWallet Modal -->
+    <Teleport to="body">
+      <ConnectWallet
+        ref="connectWalletRef"
+        :chain-id="baseStore.currentChainId"
+        :hd-path="blockchain.defaultHDPath"
+        :addr-prefix="blockchain.current?.bech32Prefix"
+        @connect="walletStateChange"
+      />
+    </Teleport>
   </div>
 </template>

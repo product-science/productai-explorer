@@ -10,9 +10,7 @@ import { Icon } from '@iconify/vue';
 import CardStatisticsVertical from '@/components/CardStatisticsVertical.vue';
 import { ref, computed, watch, onMounted } from 'vue';
 import { useWalletStore, useBaseStore, useBlockchain } from '@/stores';
-import ConnectWallet from '@/components/ConnectWallet.vue';
 import ExchangeWidget from '@/components/ExchangeWidget.vue';
-import { useQRCode } from '@vueuse/integrations/useQRCode';
 
 const props = defineProps(['chain']);
 
@@ -23,9 +21,6 @@ const blockchain = useBlockchain();
 const format = useFormatter();
 const dialog = useTxDialog();
 const inferenceStore = useInferenceStore();
-
-// Wallet connection modal
-const connectWalletRef = ref<InstanceType<typeof ConnectWallet> | null>(null);
 
 // Mock data for developer statistics - replace with actual data sources
 const aiTokensLastWeek = computed(() => inferenceStore.displayAiTokensLastWeek);
@@ -38,27 +33,7 @@ const models = computed(() => {
 });
 const throughput = computed(() => validatorStore.displayTotalPower);
 
-// QR code for wallet address - fixed implementation
-const qrCodeSource = ref('');
-const qrcode = useQRCode(qrCodeSource, {
-  logo: '/logos/gonka-mainnet/logo-small.svg',
-  logoOptions: {
-    width: 40,
-    height: 40,
-    margin: 4,
-  },
-  errorCorrectionLevel: 'H',
-  margin: 2,
-});
-const walletAddress = ref<string>('');
-const isWalletHintHover = ref(false);
 const isApiHintHover = ref(false);
-
-// Watch for address changes and update QR code
-watch(() => walletStore.currentAddress, (newAddress) => {
-  walletAddress.value = newAddress || '';
-  qrCodeSource.value = newAddress || '';
-}, { immediate: true });
 
 // Public key functionality
 const publicKey = ref<any>(null);
@@ -274,32 +249,7 @@ function fillCurrentWalletData() {
   }
 }
 
-// Wallet state change handler
-async function walletStateChange(res: any) {
-  try {
-    if (res?.detail?.value) {
-      // Add a small delay to ensure the modal is properly closed first
-      setTimeout(async () => {
-        try {
-          await walletStore.setConnectedWallet(res.detail.value);
-        } catch (error) {
-          console.error('Error setting connected wallet:', error);
-        }
-      }, 50);
-    }
-  } catch (error) {
-    console.error('Error in wallet state change:', error);
-  }
-}
 
-// Open connect wallet modal
-function openConnectWallet() {
-  try {
-    connectWalletRef.value?.openModal();
-  } catch (error) {
-    console.error('Error opening wallet modal:', error);
-  }
-}
 </script>
 
 <template>
@@ -343,83 +293,12 @@ function openConnectWallet() {
     />
   </div>
 
-  <!-- Second Row: Three Widgets -->
+  <!-- Second Row: Two Widgets -->
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
-      <!-- Connect Wallet Widget -->
-      <div class="bg-base-100 rounded shadow">
-          <div class="px-4 pt-4 pb-2 text-lg font-semibold text-main">
-              {{ $t('developer.connect_wallet') }}
-          </div>
-          <div class="px-4 pb-4">
-              <!-- Not Connected State -->
-              <div v-if="!walletAddress" class="bg-gray-100 dark:bg-[#373f59] rounded-lg px-4 py-6 relative min-h-[96px] grid place-items-center">
-                <div class="absolute top-2 right-2 text-primary" @mouseenter="isWalletHintHover = true" @mouseleave="isWalletHintHover = false">
-                  <Icon icon="mdi:information" />
-                </div>
-                <div class="flex items-center justify-center">
-                  <button v-if="!isWalletHintHover" @click="openConnectWallet" class="btn btn-primary text-white cursor-pointer">
-                    <Icon icon="mdi:wallet" class="mr-2" />
-                    {{ $t('developer.connect_wallet') }}
-                  </button>
-                  <p v-else class="text-sm font-semibold text-primary text-center">
-                    {{ $t('developer.connect_wallet_hint') }}
-                  </p>
-                </div>
-              </div>
-              
-              <!-- Connected State -->
-              <div v-else class="space-y-3">
-                  <!-- Wallet Info -->
-                  <div class="bg-gray-100 dark:bg-[#373f59] rounded-lg px-4 py-3">
-                      <div class="flex items-center justify-between mb-2">
-                          <span class="text-sm font-semibold text-primary capitalize">
-                              {{ walletStore.connectedWallet?.wallet || 'Unknown' }}
-                          </span>
-                          <RouterLink
-                            v-if="walletStore.currentAddress"
-                            class="btn btn-xs btn-primary text-white no-underline"
-                            :to="`/${chain}/account/${walletStore.currentAddress}`"
-                          >
-                            {{ $t('index.more') }}
-                          </RouterLink>
-                      </div>
-                      
-                      <!-- QR Code -->
-                      <div class="flex justify-center mb-3">
-                          <img v-if="qrcode" :src="qrcode" alt="QR Code" class="w-24 h-24 rounded-sm" />
-                      </div>
-                      
-                      <!-- Address -->
-                      <div class="text-center mb-3">
-                          <div class="text-xs text-gray-600 dark:text-gray-400 mb-1">{{ $t('developer.address_label') }}</div>
-                          <div 
-                              class="text-xs font-mono bg-white dark:bg-gray-800 rounded px-2 py-1 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700"
-                              @click="copyAddress(walletAddress)"
-                              :title="walletAddress"
-                          >
-                              {{ walletAddress.length > 4 ? walletAddress.substring(walletAddress.length - 4) : walletAddress }}
-                          </div>
-                      </div>
-                      <!-- Balance Summary -->
-                      <div>
-                        <div class="text-xs text-gray-600 dark:text-gray-400 mb-1">{{ $t('account.balance') }}</div>
-                        <div class="text-lg font-semibold text-main">
-                          {{ format.formatToken(walletStore.balanceOfStakingToken) }}
-                        </div>
-                      </div>
-                  </div>
-                  
-                  <!-- Disconnect Button -->
-                  <button @click="walletStore.disconnect()" class="btn btn-outline btn-error w-full text-sm">
-                      <Icon icon="mdi:logout" class="mr-2" />
-                      {{ $t('developer.disconnect') }}
-                  </button>
-              </div>
-          </div>
+      <!-- Exchange Widget (spans 2 columns) -->
+      <div class="lg:col-span-2">
+        <ExchangeWidget :chain="chain" />
       </div>
-
-      <!-- Exchange Widget -->
-      <ExchangeWidget :chain="chain" />
 
       <!-- Use Gonka API Widget -->
       <div class="bg-base-100 rounded shadow">
@@ -463,18 +342,6 @@ function openConnectWallet() {
           </div>
       </div>
   </div>
-  
-  <!-- Connect Wallet Modal -->
-  <Teleport to="body">
-      <ConnectWallet 
-          ref="connectWalletRef"
-          :chain-id="baseStore.currentChainId" 
-          :hd-path="blockchain.defaultHDPath"
-          :addr-prefix="blockchain.current?.bech32Prefix" 
-          @connect="walletStateChange"
-          @keplr-config="walletStore.suggestChain()"
-      />
-  </Teleport>
 </div>
 </template>
 
